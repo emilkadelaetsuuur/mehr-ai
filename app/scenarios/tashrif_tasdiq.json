@@ -1,0 +1,39 @@
+{
+ "title": {
+  "uz": "Tashrifni tasdiqlash",
+  "ru": "Подтверждение визита"
+ },
+ "who": "any",
+ "basis": "«Faol chaqiruv» nazorati va bemor fikri (№11 va №8 muammolar)",
+ "greeting": {
+  "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. Shifokor tashrifi haqida ikkita savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам два вопроса о визите врача. Отвечайте «да» или «нет»."
+ },
+ "questions": [
+  {
+   "id": "keldi",
+   "uz": "Oilaviy shifokor yoki hamshira uyingizga keldimi?",
+   "ru": "Приходил ли к вам домой семейный врач или медсестра?",
+   "type": "yesno",
+   "flag_if": "no",
+   "verify": true
+  },
+  {
+   "id": "tushunarli",
+   "uz": "Shifokorning tushuntirishlari sizga tushunarli bo'ldimi?",
+   "ru": "Были ли вам понятны объяснения врача?",
+   "type": "yesno",
+   "flag_if": "no",
+   "extra": "fikr"
+  }
+ ],
+ "closing_ok": {
+  "uz": "Rahmat! Fikringiz poliklinika rahbariyatiga yetkaziladi. Sog' bo'ling!",
+  "ru": "Спасибо! Ваш отзыв передадим руководству поликлиники. Будьте здоровы!"
+ },
+ "closing_alert": {
+  "uz": "Rahmat! Javobingiz poliklinika rahbariyatiga yetkazildi, siz bilan bog'lanishadi.",
+  "ru": "Спасибо! Ваш ответ передан руководству поликлиники, с вами свяжутся."
+ },
+ "id": "tashrif_tasdiq"
+}

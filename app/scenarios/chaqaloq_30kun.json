@@ -1,0 +1,76 @@
+{
+ "title": {
+  "uz": "Chaqaloq: hayotining birinchi 30 kuni",
+  "ru": "Новорождённый: первые 30 дней"
+ },
+ "who": "chaqaloq",
+ "basis": "JSST: tug'ruqdan keyingi aloqalar 3-kun, 7–14-kun va 6-hafta; chaqaloqdagi xavf belgilari ro'yxati (WHO Recommendations on Postnatal Care, 2013)",
+ "schedule_days": [
+  3,
+  7,
+  14,
+  42
+ ],
+ "greeting": {
+  "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. Chaqalog'ingiz haqida oltita qisqa savol beraman. Savollarga «ha» yoki «yo'q» deb javob bering.",
+  "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам шесть коротких вопросов о вашем малыше. Отвечайте «да» или «нет»."
+ },
+ "questions": [
+  {
+   "id": "emish",
+   "uz": "Chaqaloq ko'krakni yaxshi emyaptimi?",
+   "ru": "Малыш хорошо сосёт грудь?",
+   "type": "yesno",
+   "flag_if": "no",
+   "complaint": "emmayapti"
+  },
+  {
+   "id": "tutqanoq",
+   "uz": "Chaqaloqda tutqanoq bo'ldimi?",
+   "ru": "Были ли у малыша судороги?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "complaint": "tutqanoq"
+  },
+  {
+   "id": "nafas",
+   "uz": "Chaqaloq juda tez yoki qiynalib nafas olyaptimi?",
+   "ru": "Малыш дышит очень часто или с трудом?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "complaint": "tez_nafas"
+  },
+  {
+   "id": "lanj",
+   "uz": "Chaqaloq lanj, kam harakat bo'lib qoldimi?",
+   "ru": "Малыш стал вялым, мало двигается?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "complaint": "harakatsiz"
+  },
+  {
+   "id": "sariq",
+   "uz": "Chaqaloqning terisi yoki kaftlari sarg'aydimi?",
+   "ru": "Пожелтела ли кожа или ладони малыша?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "complaint": "sariqlik"
+  },
+  {
+   "id": "harorat",
+   "uz": "Chaqaloqning tana harorati nechchi? O'lchamagan bo'lsangiz, «bilmayman» deng.",
+   "ru": "Какая у малыша температура? Если не измеряли, скажите «не знаю».",
+   "type": "number",
+   "field": "temp"
+  }
+ ],
+ "closing_ok": {
+  "uz": "Rahmat! Javoblaringiz shifokoringizga yetkazildi. Sog' bo'ling!",
+  "ru": "Спасибо! Ваши ответы переданы врачу. Будьте здоровы!"
+ },
+ "closing_alert": {
+  "uz": "Javoblaringizda xavotirli belgilar bor. Iltimos, hoziroq bir yuz uch raqamiga qo'ng'iroq qiling. Shifokoringizga shoshilinch xabar yuborildi.",
+  "ru": "В ваших ответах есть тревожные признаки. Пожалуйста, сейчас же позвоните по номеру сто три. Вашему врачу отправлено срочное сообщение."
+ },
+ "id": "chaqaloq_30kun"
+}

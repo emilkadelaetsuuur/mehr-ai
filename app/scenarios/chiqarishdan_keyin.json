@@ -1,0 +1,55 @@
+{
+ "title": {
+  "uz": "Shifoxonadan keyin: ahvolni so'rash",
+  "ru": "После выписки: вопросы о самочувствии"
+ },
+ "who": "tuqqan",
+ "basis": "Chiqarilgan bemorni faol kuzatish; savollarni shifokor tasdiqlaydi",
+ "greeting": {
+  "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. Shifoxonadan keyingi ahvolingiz haqida to'rtta savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам четыре вопроса о самочувствии после выписки. Отвечайте «да» или «нет»."
+ },
+ "questions": [
+  {
+   "id": "isitma",
+   "uz": "Tana haroratingiz ko'tarildimi?",
+   "ru": "Поднималась ли температура?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "complaint": "isitma"
+  },
+  {
+   "id": "qon",
+   "uz": "Qon ketishi kuzatildimi?",
+   "ru": "Было ли кровотечение?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "complaint": "qon_ketish"
+  },
+  {
+   "id": "ahvol",
+   "uz": "Ahvolingiz kechagidan yomonlashdimi?",
+   "ru": "Стало ли вам хуже, чем вчера?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "extra": "ahvol"
+  },
+  {
+   "id": "dori",
+   "uz": "Shifokor yozgan dorilarni ichyapsizmi?",
+   "ru": "Принимаете ли вы назначенные лекарства?",
+   "type": "yesno",
+   "flag_if": "no",
+   "extra": "dori"
+  }
+ ],
+ "closing_ok": {
+  "uz": "Rahmat! Javoblaringiz shifokoringizga yetkazildi. Sog' bo'ling!",
+  "ru": "Спасибо! Ваши ответы переданы врачу. Будьте здоровы!"
+ },
+ "closing_alert": {
+  "uz": "Javoblaringizda xavotirli belgilar bor. Iltimos, hoziroq bir yuz uch raqamiga qo'ng'iroq qiling. Shifokoringizga shoshilinch xabar yuborildi.",
+  "ru": "В ваших ответах есть тревожные признаки. Пожалуйста, сейчас же позвоните по номеру сто три. Вашему врачу отправлено срочное сообщение."
+ },
+ "id": "chiqarishdan_keyin"
+}

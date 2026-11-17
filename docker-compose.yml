@@ -1,0 +1,33 @@
+name: nigoh
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://nigoh:${POSTGRES_PASSWORD}@db:5432/nigoh
+      DATA_DIR: /data
+    volumes:
+      - appdata:/data
+    ports:
+      - "127.0.0.1:18700:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: nigoh
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: nigoh
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nigoh"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+volumes:
+  appdata:
+  pgdata:
