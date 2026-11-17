@@ -1,5 +1,6 @@
 """Synthetic district: 300 invented patients. No real personal data is used anywhere."""
 import random
+import secrets
 from datetime import timedelta
 
 from . import core
@@ -95,6 +96,21 @@ def run(db, n=300, seed=7):
     q = next(x for x in patients if x.zone == "yellow" and x.kind == "homilador")
     db.add(Task(patient_id=q.id, type="faol_chaqiruv", role="shifokor", reason="Shifoxonadan chiqarildi",
                 created_at=now - timedelta(hours=31), due_at=now - timedelta(hours=7), status="ochiq"))
+    # calls: a few finished and planned ones so the calls page shows the whole cycle
+    ok = {"emish": {"value": "yes", "transcript": "Ha, yaxshi emyapti."}, "tutqanoq": {"value": "no", "transcript": "Yo'q."},
+          "nafas": {"value": "no", "transcript": "Yo'q, bir tekis."}, "lanj": {"value": "no", "transcript": "Yo'q."},
+          "sariq": {"value": "no", "transcript": "Yo'q."}, "harorat": {"value": 36.7, "transcript": "O'ttiz olti-yu yetti."}}
+    for i, p in enumerate([x for x in patients if x.kind == "chaqaloq" and x.zone == "green"][:9]):
+        when = now - timedelta(days=i + 1, hours=3)
+        if i < 4:
+            db.add(Call(token=secrets.token_urlsafe(9), patient_id=p.id, scenario="chaqaloq_30kun", lang="uz", status="tugadi", answers=ok, flags=[],
+                        planned_at=when, finished_at=when, created_at=when))
+        else:
+            db.add(Call(token=secrets.token_urlsafe(9), patient_id=p.id, scenario="chaqaloq_30kun", lang="uz", status="rejalashtirilgan", answers={}, flags=[],
+                        planned_at=now + timedelta(days=i - 3), created_at=now))
+    late = next(x for x in patients if x.kind == "homilador" and x.zone == "yellow")
+    db.add(Call(token=secrets.token_urlsafe(9), patient_id=late.id, scenario="homilador", lang="uz", status="javobsiz", attempts=3, answers={}, flags=["noanswer"],
+                planned_at=now - timedelta(days=1), finished_at=now - timedelta(days=1), created_at=now - timedelta(days=1)))
     db.query(Notice).delete()
     # three fixed patients for the live demo
     a = Patient(full_name="Sodiqova Dilnoza", kind="homilador", birth_year=1998, weeks=32, mahalla="Bog'ishamol", phone="+998 90 123-45-67",

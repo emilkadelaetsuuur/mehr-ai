@@ -11,6 +11,7 @@ from datetime import timedelta
 import qrcode
 import qrcode.image.svg
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Request, Response, UploadFile
+from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -183,10 +184,12 @@ async def voice(audio: UploadFile = File(...), lang: str = Form("uz")):
     raw = await audio.read()
     if len(raw) < 800:
         raise HTTPException(400, "audio too short")
-    res = voicelab.stt(raw, audio.filename or "audio.webm", audio.content_type or "audio/webm", lang if lang in ("uz", "ru", "auto") else "uz")
+    res = await run_in_threadpool(voicelab.stt, raw, audio.filename or "audio.webm", audio.content_type or "audio/webm",
+                                  lang if lang in ("uz", "ru", "auto") else "uz")
     if not res:
         raise HTTPException(503, "stt unavailable")
-    return {"transcript": res["text"], "language": res["language"], "stt_ms": res["ms"], **extract.extract(res["text"])}
+    ex = await run_in_threadpool(extract.extract, res["text"])
+    return {"transcript": res["text"], "language": res["language"], "stt_ms": res["ms"], **ex}
 
 
 @app.post("/api/patients/confirm")
@@ -351,12 +354,13 @@ async def call_answer(token: str, qid: str = Form(...), value: str = Form(""), a
     transcript, val = "", None
     if audio is not None:
         raw = await audio.read()
-        res = voicelab.stt(raw, audio.filename or "a.webm", audio.content_type or "audio/webm", c.lang or "uz") if len(raw) > 800 else None
-        transcript = (res or {}).get("text", "")
-        if q["type"] == "number":
-            val = extract.number(transcript)
-        else:
-            val = extract.yes_no(transcript, q[c.lang or "uz"]) if transcript else "unclear"
+        def recognise():
+            res = voicelab.stt(raw, audio.filename or "a.webm", audio.content_type or "audio/webm", c.lang or "uz") if len(raw) > 800 else None
+            text = (res or {}).get("text", "")
+            if q["type"] == "number":
+                return text, extract.number(text)
+            return text, (extract.yes_no(text, q[c.lang or "uz"]) if text else "unclear")
+        transcript, val = await run_in_threadpool(recognise)
     elif value:
         if q["type"] == "number":
             val = extract.number(value)
