@@ -16,6 +16,7 @@ scenario and the answers given in this call.
 import logging
 import os
 import re
+import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as Late
 
@@ -23,7 +24,8 @@ from . import config, core, rules, voicelab
 
 log = logging.getLogger("nigoh.closing")
 _state = {"client": None, "plain": False}
-_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="closing")
+# One pool per writer: requests a gateway keeps open must not hold up the other writer.
+_pools = {name: ThreadPoolExecutor(max_workers=4, thread_name_prefix=name) for name in ("claude", "voicelab")}
 
 EMERGENCY = {"uz": "bir yuz uch", "ru": "сто три"}  # 103 in words: the speech engine reads words, not digits
 # Spoken while the closing is being written, so the caller hears a voice instead of silence.
@@ -209,10 +211,13 @@ def sentences(text):
 def compose(call, res):
     """Closing words for a finished call and who wrote them: 'claude', 'voicelab', or 'shablon' for the fixed phrase."""
     lang = call.lang or "uz"
-    for name, write, seconds in writers(lang):
+    request, started = brief(call, res), time.monotonic()
+    # A caller is on the line. All writers start at once and each has its time by the clock from that moment,
+    # whatever its own network timeouts do: the wait is the longest single limit, not the sum of them.
+    jobs = [(name, _pools[name].submit(write, request), seconds) for name, write, seconds in writers(lang)]
+    for name, job, seconds in jobs:  # in order of preference
         try:
-            # A caller is on the line: the writer gets this long by the clock, whatever its own network timeouts do.
-            text = _pool.submit(write, brief(call, res)).result(timeout=seconds)
+            text = job.result(timeout=max(0.0, seconds - (time.monotonic() - started)))
         except Late:
             log.warning("%s: no closing within %gs", name, seconds)
             continue
