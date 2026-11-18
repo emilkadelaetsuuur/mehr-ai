@@ -13,6 +13,8 @@ os.environ["DEMO_PASSWORD"] = ""
 os.environ["PUBLIC_URL"] = "http://testserver"
 for _k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
     os.environ[_k] = ""
+for _k in ("ANTHROPIC_BASE_URL", "CLAUDE_MODEL", "CLAUDE_LANGS", "CLAUDE_CLOSING", "CLAUDE_TIMEOUT", "VOICELAB_CLOSING"):
+    os.environ.pop(_k, None)  # the server's choice of model and languages is not what the tests are about
 
 from fastapi.testclient import TestClient  # noqa: E402
 

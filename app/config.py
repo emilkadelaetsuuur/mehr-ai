@@ -35,5 +35,5 @@ CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "").strip() or "claude-opus-5-5"
 CLAUDE_TIMEOUT = float(os.getenv("CLAUDE_TIMEOUT", "8"))  # seconds a caller may wait for Claude before the next writer is asked
 CLAUDE_CLOSING = os.getenv("CLAUDE_CLOSING", "1").strip() != "0"
 # Languages in which Claude words the closing. Elsewhere, and when Claude is late, the VoiceLab model writes it.
-CLAUDE_LANGS = [x.strip() for x in os.getenv("CLAUDE_LANGS", "uz,ru").split(",") if x.strip()]
+CLAUDE_LANGS = [x.strip() for x in (os.getenv("CLAUDE_LANGS") or "uz,ru").split(",") if x.strip()]
 VOICELAB_CLOSING = os.getenv("VOICELAB_CLOSING", "1").strip() != "0"
