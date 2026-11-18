@@ -4,7 +4,7 @@
 
 ```mermaid
 sequenceDiagram
-  participant S as Сервер Nigoh
+  participant S as Сервер Mehr AI
   participant K as Компьютер (gateway.py)
   participant T as Android-телефон
   participant P as Пациент
@@ -35,7 +35,7 @@ python gateway/gateway.py              # звонить по-настоящем�
 
 | Параметр | Что задаёт |
 |----------|------------|
-| `--server` | адрес сервера Nigoh (по умолчанию — демо) |
+| `--server` | адрес сервера Mehr AI (по умолчанию — демо) |
 | `--ring-seconds` | сколько ждать ответа, по умолчанию 45 с |
 | `--talk-seconds` | наибольшая длина звонка, по умолчанию 420 с |
 | `--no-speaker` | не включать громкую связь (если звук идёт по кабелю гарнитуры) |
