@@ -253,6 +253,13 @@ def wants_human(text):
     return any(_norm(w) in low for w in HUMAN)
 
 
+def signs(text, quick=False):
+    """Complaint codes named in free speech. `quick` uses the keyword lists only and answers at once;
+    otherwise the language model reads the text first (slower, catches other wordings)."""
+    data = _clean(fallback(text), text)[0] if quick else extract(text)["data"]
+    return [c for c in data.get("complaints") or [] if c in COMPLAINTS]
+
+
 def number(text):
     """First number in a spoken answer (digits); LLM converts spelled numbers."""
     m = re.search(r"\d{1,3}(?:[.,]\d)?", text or "")

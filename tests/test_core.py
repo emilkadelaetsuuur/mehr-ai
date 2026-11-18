@@ -294,6 +294,24 @@ def test_a_message_goes_to_the_person_the_patient_is_attached_to():
         assert tasks({"X-Role": "mutaxassis"}, mine["id"], "mutaxassis")
         assert c.post(f"/api/call/{k['token']}/appeal", data={"text": "yana bir gap"}).status_code == 400  # the call is over
 
+        # After the caller has been answered the language model reads the message again; a warning sign the
+        # keyword lists missed still reaches the zone rules and the person she is attached to.
+        from app import core, extract
+        from app.db import Call, SessionLocal
+
+        k = call(orphan)
+        said = "Tunda yomon ahvolga tushdim"
+        assert c.post(f"/api/call/{k['token']}/appeal", data={"text": said}).json()["urgent"] is False
+        with SessionLocal() as db:
+            kk = db.query(Call).filter(Call.token == k["token"]).first()
+            old_signs, extract.signs = extract.signs, lambda text, quick=False: [] if quick else ["hushdan_ketish"]
+            try:
+                assert core.appeal_review(db, kk, said) == ["hushdan_ketish"]
+            finally:
+                extract.signs = old_signs
+            db.commit()
+        assert c.get(f"/api/patients/{orphan['id']}").json()["zone"] == "red"
+
 
 def test_a_caller_can_ask_for_a_person():
     """Asking for an operator ends the questions: staff get a task to ring back within the promised time;

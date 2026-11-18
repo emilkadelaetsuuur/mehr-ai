@@ -225,7 +225,7 @@ def appeal(db, call, text):
     warning sign, the zone rules treat it like any other report: red zone, specialist, urgent notice."""
     p = call.patient
     role, name = responsible(p)
-    found = [c for c in extract.extract(text)["data"].get("complaints") or [] if c in rules.COMPLAINTS]
+    found = extract.signs(text, quick=True)  # she is waiting on the line: keywords now, the careful reading follows (appeal_review)
     urgent = any(c in rules.T["red_complaints"] for c in found)
     if found:  # the same road as a symptom reported in any other way
         add_observation(db, p, "murojaat", {"complaints": found}, {"complaints": dict.fromkeys(found, text[:200])}, text, "Bemor")
@@ -250,6 +250,30 @@ def appeal(db, call, text):
     call.answers = {**(call.answers or {}), "murojaat": {"value": "yes", "transcript": text, "complaints": found, "to": role}}
     audit(db, "bemor", "appeal_left", p, f"-> {role} {name}".strip())
     return {"role": role, "doctor": name, "urgent": urgent, "task": t}
+
+
+def appeal_review(db, call, text):
+    """The careful reading of a message, after the caller has been answered: the language model looks for
+    warning signs the keyword lists missed. What it finds goes the same road as any reported symptom."""
+    note = (call.answers or {}).get("murojaat") or {}
+    known = note.get("complaints") or []
+    more = [c for c in extract.signs(text) if c not in known]
+    if not more:
+        return []
+    p = call.patient
+    add_observation(db, p, "murojaat", {"complaints": known + more}, {"complaints": dict.fromkeys(known + more, text[:200])}, text, "Bemor")
+    call.answers = {**(call.answers or {}), "murojaat": {**note, "complaints": known + more}}
+    if any(c in rules.T["red_complaints"] for c in more):
+        role, _ = responsible(p)
+        notify(
+            db,
+            p,
+            role,
+            "red",
+            f"MUROJAATDA XAVF BELGISI: {p.full_name} ({p.mahalla}, {p.phone}): {text[:200]}",
+            f"ТРЕВОЖНЫЙ ПРИЗНАК В ОБРАЩЕНИИ: {p.full_name} ({p.mahalla}, {p.phone}): {text[:200]}",
+        )
+    return more
 
 
 def callback(db, call, said=""):

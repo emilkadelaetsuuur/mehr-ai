@@ -2,9 +2,11 @@
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import JSONResponse
+from starlette.background import BackgroundTask
 
 from .. import closing, config, core, dialogue, extract, voicelab
-from ..db import Call
+from ..db import Call, SessionLocal
 from .deps import db_session
 
 router = APIRouter(prefix="/api/call")
@@ -141,9 +143,19 @@ async def appeal(token: str, text: str = Form(""), audio: UploadFile = File(None
         said = ((res or {}).get("text") or "").strip()[:2000]
     if len(said) < 3:
         return {"ok": False}
-    out = await run_in_threadpool(core.appeal, db, c, said)
+    out = core.appeal(db, c, said)
     db.commit()
-    return {"ok": True, "transcript": said, "to": out["role"], "doctor": out["doctor"], "urgent": out["urgent"]}
+    body = {"ok": True, "transcript": said, "to": out["role"], "doctor": out["doctor"], "urgent": out["urgent"]}
+    # the caller is answered at once; the careful reading of her words runs after the response has gone
+    return JSONResponse(body, background=BackgroundTask(_review, c.id, said) if voicelab.enabled() else None)
+
+
+def _review(call_id: int, said: str):
+    with SessionLocal() as db:
+        call = db.get(Call, call_id)
+        if call:
+            core.appeal_review(db, call, said)
+            db.commit()
 
 
 @router.post("/{token}/operator")
