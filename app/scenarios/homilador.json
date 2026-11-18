@@ -44,10 +44,10 @@
   },
   {
    "id": "homila",
-   "uz": "Homila qimirlashini odatdagidek sezyapsizmi?",
-   "ru": "Чувствуете ли вы шевеления плода как обычно?",
+   "uz": "Homila qimirlashi odatdagidan kamaydimi yoki umuman sezilmayaptimi?",
+   "ru": "Шевеления плода стали реже обычного или пропали?",
    "type": "yesno",
-   "flag_if": "no",
+   "flag_if": "yes",
    "complaint": "homila_qimirlamaydi"
   }
  ],

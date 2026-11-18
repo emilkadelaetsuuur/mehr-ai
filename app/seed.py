@@ -189,7 +189,7 @@ def run(db, n=300, seed=7):
     )
     # calls: a few finished and planned ones so the calls page shows the whole cycle
     ok = {
-        "emish": {"value": "yes", "transcript": "Ha, yaxshi emyapti."},
+        "emish": {"value": "no", "transcript": "Yo'q, yaxshi emyapti."},
         "tutqanoq": {"value": "no", "transcript": "Yo'q."},
         "nafas": {"value": "no", "transcript": "Yo'q, bir tekis."},
         "lanj": {"value": "no", "transcript": "Yo'q."},

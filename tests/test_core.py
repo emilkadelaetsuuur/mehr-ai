@@ -75,7 +75,7 @@ def test_full_flow():
         calls = c.get(f"/api/patients/{baby['id']}").json()["calls"]
         assert any(x["scenario"] == "chaqaloq_30kun" for x in calls)
         call = c.post(f"/api/patients/{baby['id']}/calls", json={"scenario": "chaqaloq_30kun"}).json()
-        c.post(f"/api/call/{call['token']}/answer", data={"qid": "emish", "value": "no"})
+        c.post(f"/api/call/{call['token']}/answer", data={"qid": "emish", "value": "yes"})
         c.post(f"/api/call/{call['token']}/answer", data={"qid": "harorat", "value": "38"})
         res = c.post(f"/api/call/{call['token']}/finish").json()
         assert res["zone"] == "red" and res["alert"]
@@ -152,6 +152,25 @@ def test_personal_accounts_and_doctor_scope(monkeypatch):
         c.post("/api/logout")
         assert c.get("/api/me").status_code == 401
         assert c.post("/api/login", json={"username": "shifokor", "password": "yangi-parol"}).status_code == 200
+
+
+def test_symptom_calls_alarm_only_on_yes():
+    """In a symptom call the worrying answer is always "yes": a caller who says "no" to everything
+    must not be told to ring 103, and a single "yes" must raise the alarm."""
+    from app import core
+
+    symptom = [s for s in core.SCENARIOS.values() if s["id"] != "tashrif_tasdiq"]  # the visit check asks "did the doctor come?"
+    assert len(symptom) == 3 and all(q["flag_if"] == "yes" for s in symptom for q in s["questions"] if q["type"] == "yesno")
+    with TestClient(app) as c:
+        p = c.post("/api/patients/confirm", json={"fields": {"full_name": "Qo'ng'iroq Sinov", "birth_year": 1996, "kind": "homilador"}, "consent": True}).json()
+        outcomes = {}
+        for answer in ("no", "yes"):
+            call = c.post(f"/api/patients/{p['id']}/calls", json={"scenario": "homilador"}).json()
+            for q in c.get(f"/api/call/{call['token']}").json()["questions"]:
+                c.post(f"/api/call/{call['token']}/answer", data={"qid": q["id"], "value": answer})
+            outcomes[answer] = c.post(f"/api/call/{call['token']}/finish").json()
+        assert not outcomes["no"]["alert"] and outcomes["no"]["flags"] == [] and outcomes["no"]["zone"] == "green"
+        assert outcomes["yes"]["alert"] and outcomes["yes"]["zone"] == "red" and len(outcomes["yes"]["flags"]) == 5
 
 
 def test_sign_in_forgives_paste_noise_but_not_a_wrong_password(monkeypatch):

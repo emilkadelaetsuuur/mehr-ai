@@ -18,10 +18,10 @@
  "questions": [
   {
    "id": "emish",
-   "uz": "Chaqaloq ko'krakni yaxshi emyaptimi?",
-   "ru": "Малыш хорошо сосёт грудь?",
+   "uz": "Chaqaloq ko'krakni yomon emyaptimi yoki emishdan bosh tortyaptimi?",
+   "ru": "Малыш плохо сосёт грудь или отказывается от неё?",
    "type": "yesno",
-   "flag_if": "no",
+   "flag_if": "yes",
    "complaint": "emmayapti"
   },
   {

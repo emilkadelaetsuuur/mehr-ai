@@ -36,10 +36,10 @@
   },
   {
    "id": "dori",
-   "uz": "Shifokor yozgan dorilarni ichyapsizmi?",
-   "ru": "Принимаете ли вы назначенные лекарства?",
+   "uz": "Shifokor yozgan dorilarni ichmay qo'ygan kunlaringiz bo'ldimi?",
+   "ru": "Пропускали ли вы приём назначенных лекарств?",
    "type": "yesno",
-   "flag_if": "no",
+   "flag_if": "yes",
    "extra": "dori"
   }
  ],
