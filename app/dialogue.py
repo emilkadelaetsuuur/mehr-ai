@@ -29,6 +29,16 @@ SAY = {
         "uz": "Kechirasiz, yaxshi eshitmadim. Iltimos, «ha» yoki «yo'q» deb javob bering.",
         "ru": "Простите, я не расслышала. Пожалуйста, ответьте «да» или «нет».",
     },
+    # phone line only: the second try is answered with keys
+    "retry_keys": {
+        "uz": "Kechirasiz, tushunmadim. «Ha» bo'lsa bir raqamini, «yo'q» bo'lsa ikki raqamini bosing. Xodim bilan gaplashish uchun nolni bosing.",
+        "ru": "Простите, я не поняла. Если «да», нажмите один, если «нет», нажмите два. Чтобы поговорить с сотрудником, нажмите ноль.",
+    },
+    # phone line only, when the polyclinic's number is set: the call is put through
+    "operator_dial": {
+        "uz": "Tushundim. Hozir sizni poliklinika xodimiga ulayman, iltimos, kutib turing.",
+        "ru": "Поняла. Сейчас соединю вас с сотрудником поликлиники, пожалуйста, подождите.",
+    },
     "appeal_q": {
         "uz": "Shifokoringizga aytmoqchi bo'lgan yana biror gapingiz bormi? Xabar qoldirishni xohlaysizmi?",
         "ru": "Хотите ли вы что-то ещё передать вашему врачу? Записать обращение?",

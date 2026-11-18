@@ -9,7 +9,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
 from . import config, dialogue, extract, rules, telegram
-from .db import AuditLog, Call, Notice, Observation, Patient, RiskEvent, Task
+from .db import AuditLog, Call, Notice, Observation, Patient, RiskEvent, SessionLocal, Task
 from .schemas import Vitals
 
 HERE = os.path.dirname(__file__)
@@ -274,6 +274,15 @@ def appeal_review(db, call, text):
             f"ТРЕВОЖНЫЙ ПРИЗНАК В ОБРАЩЕНИИ: {p.full_name} ({p.mahalla}, {p.phone}): {text[:200]}",
         )
     return more
+
+
+def review_later(call_id, text):
+    """appeal_review in its own database session: it runs after the caller has been answered."""
+    with SessionLocal() as db:
+        call = db.get(Call, call_id)
+        if call:
+            appeal_review(db, call, text)
+            db.commit()
 
 
 def callback(db, call, said=""):

@@ -272,6 +272,7 @@ window.I18N = {
   pw_ok: ["Parol almashtirildi", "Пароль изменён"],
   dial: ["Telefon raqamiga qo'ng'iroq qilish", "Позвонить на номер"],
   dial_ok: ["Qo'ng'iroq boshlandi", "Звонок начат"],
+  dial_to: ["Boshqa raqamga qo'ng'iroq (bo'sh qolsa — kartadagi raqam)", "Позвонить на другой номер (пусто — номер из карточки)"],
   consent_yes: ["Rozilik olingan", "Согласие получено"],
   consent_no: ["Rozilik olinmagan", "Согласия нет"],
   consent_btn: ["Rozilikni qayd etish", "Записать согласие"],

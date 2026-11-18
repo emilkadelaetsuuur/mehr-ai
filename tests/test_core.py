@@ -478,18 +478,60 @@ def test_roles_limit_what_an_account_may_do():
         assert res["matched"] == 0 and res["invalid"] == ["Valiyeva Madina", "Valiyeva Madina"]
 
 
-def test_phone_line_twiml_and_telegram_binding():
-    from app import telegram
+def test_phone_line_dialogue_and_telegram_binding(monkeypatch):
+    """The provider's requests, step by step, as a real call would send them (no provider, no speech service)."""
+    from app import telegram, telephony
     from app.db import SessionLocal, User
 
+    assert telephony.number("90 123-45-67") == "+998901234567" and telephony.number("+998 (91) 234-56-78") == "+998912345678" and telephony.number("12") is None
     with TestClient(app) as c:
-        p = c.get("/api/patients", params={"q": "Valiyev Amir"}).json()[0]
-        call = c.post(f"/api/patients/{p['id']}/calls", json={"scenario": "tashrif_tasdiq"}).json()
-        x = c.post(f"/api/tel/{call['token']}/step?i=0").text
-        assert "<Record" in x and "/audio/greeting" in x and "/audio/keldi" in x
-        assert "/audio/tushunarli" in c.post(f"/api/tel/{call['token']}/answer?i=0").text  # silence -> unclear -> next question
-        assert "<Hangup/>" in c.post(f"/api/tel/{call['token']}/answer?i=1").text
-        assert c.post(f"/api/calls/{call['id']}/dial").status_code == 404  # already finished
+        p = c.post(
+            "/api/patients/confirm",
+            json={"fields": {"full_name": "Telefon Sinov", "birth_year": 1998, "kind": "tuqqan", "doctor": "Qosimova D."}, "consent": True},
+        ).json()
+
+        def ring():
+            return c.post(f"/api/patients/{p['id']}/calls", json={"scenario": "tashrif_tasdiq"}).json()
+
+        def tel(k, step, **form):
+            return c.post(f"/api/tel/{k['token']}/{step}", data=form).text
+
+        k = ring()
+        x = tel(k, "step?i=0")  # answered: greeting, how to reach a person, the first question, then listening
+        assert all(part in x for part in ("/audio/greeting", "/audio/say_hint", "/audio/keldi", "<Record", "answer?i=0"))
+        x = tel(k, "answer?i=0")  # silence: one more try, by keys
+        assert "/audio/say_retry_keys" in x and "<Gather" in x and "key?i=0" in x
+        x = tel(k, "key?i=0", Digits="1")  # "yes, the doctor came": a short reaction and the next question
+        assert "/audio/say_ack" in x and "/audio/tushunarli" in x and "answer?i=1" in x
+        x = tel(k, "key?i=1", Digits="1")  # the last question: now the offer to leave a message
+        assert "/audio/say_appeal_q" in x and "offered" in x
+        monkeypatch.setattr(telephony, "heard", lambda url, lang: "Ha, aytmoqchiman" if "offer" in url else "Bolam kechasi yaxshi uxlamayapti, maslahat kerak.")
+        x = tel(k, "offered", RecordingUrl="https://provider.example/offer")
+        assert "/audio/say_appeal_go" in x and 'playBeep="true"' in x and "message" in x
+        x = tel(k, "message", RecordingUrl="https://provider.example/message")  # the message goes to her family doctor
+        assert "/audio/say_appeal_ok<" in x and "closing" in x
+        assert "<Hangup/>" in tel(k, "closing") and "/audio/closing_ok" in tel(ring(), "closing")
+        mine = [t for t in c.get("/api/tasks", headers={"X-Role": "shifokor"}).json() if t["patient"]["id"] == p["id"] and t["type"] == "murojaat"]
+        assert len(mine) == 1 and "uxlamayapti" in mine[0]["reason"]
+        done = next(x for x in c.get("/api/calls").json() if x["id"] == k["id"])
+        assert done["status"] == "tugadi" and "murojaat" in done["flags"] and done["answers"]["keldi"]["value"] == "yes"
+        assert c.post(f"/api/calls/{k['id']}/dial", json={}).status_code == 404  # already finished
+
+        k = ring()  # "operator" by key 0: staff must ring back, the call ends politely
+        tel(k, "step?i=0")
+        x = tel(k, "key?i=0", Digits="0")
+        assert "/audio/say_operator_ok" in x and "<Hangup/>" in x and "<Dial" not in x
+        assert [t for t in c.get("/api/tasks", headers={"X-Role": "hamshira"}).json() if t["patient"]["id"] == p["id"] and t["type"] == "qayta_qongiroq"]
+        monkeypatch.setattr(telephony.config, "CLINIC_PHONE", "71 200-00-00")  # with the polyclinic's number the call is put through
+        k = ring()
+        x = tel(k, "key?i=0", Digits="0")
+        assert "/audio/say_operator_dial" in x and "<Dial" in x and "+998712000000" in x
+
+        k = ring()  # the line dropped after one answer: what was said is kept
+        tel(k, "key?i=0", Digits="2")
+        tel(k, "status", CallStatus="completed")
+        assert next(x for x in c.get("/api/calls").json() if x["id"] == k["id"])["status"] == "tugadi"
+        assert c.post(f"/api/calls/{ring()['id']}/dial", json={"phone": "901234567"}).status_code == 409  # no provider configured
     with SessionLocal() as db:
         u = db.query(User).filter(User.username == "hamshira").first()
         assert "Ulandi" in telegram.handle_update(db, {"message": {"text": "/start " + u.link_code, "chat": {"id": 777}}})

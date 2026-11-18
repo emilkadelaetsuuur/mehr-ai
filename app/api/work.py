@@ -5,7 +5,7 @@ from sqlalchemy.orm import joinedload
 
 from .. import core, telephony
 from ..db import Call, Patient, Task
-from ..schemas import NoteIn
+from ..schemas import DialIn, NoteIn
 from .deps import call_json, can_close, current_user, db_session, task_json
 
 router = APIRouter(prefix="/api")
@@ -47,19 +47,21 @@ def calls(db=Depends(db_session)):
 
 
 @router.post("/calls/{cid}/dial")
-def dial(cid: int, db=Depends(db_session), u=Depends(current_user)):
-    """Ring the patient's real phone number (needs a telephony provider in the settings)."""
+def dial(cid: int, body: DialIn = DialIn(), db=Depends(db_session), u=Depends(current_user)):
+    """Ring a real phone (needs a telephony provider in the settings): the number on the patient's card,
+    or another number given for this call, which is how a demo rings the presenter's own phone."""
     c = db.get(Call, cid)
     if not c or c.status in ("tugadi", "javobsiz"):
         raise HTTPException(404, "call")
     if not telephony.enabled():
         raise HTTPException(409, "telephony")
-    if not c.patient.phone:
+    to = telephony.number(body.phone.strip() or c.patient.phone)
+    if not to:
         raise HTTPException(400, "phone")
     try:
-        sid = telephony.dial(c, c.patient.phone)
+        sid = telephony.dial(c, to)
     except Exception as e:
-        raise HTTPException(502, f"provider: {e}"[:160])
-    core.audit(db, u, "call_dialed", c.patient, c.scenario)
+        raise HTTPException(502, f"provider: {e}"[:300])
+    core.audit(db, u, "call_dialed", c.patient, f"{c.scenario} -> {to[:5]}…{to[-2:]}")
     db.commit()
-    return {"sid": sid}
+    return {"sid": sid, "to": to}
