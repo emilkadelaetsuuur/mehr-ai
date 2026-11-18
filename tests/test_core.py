@@ -507,7 +507,7 @@ def test_phone_line_dialogue_and_telegram_binding(monkeypatch):
         assert "/audio/say_appeal_q" in x and "offered" in x
         monkeypatch.setattr(telephony, "heard", lambda url, lang: "Ha, aytmoqchiman" if "offer" in url else "Bolam kechasi yaxshi uxlamayapti, maslahat kerak.")
         x = tel(k, "offered", RecordingUrl="https://provider.example/offer")
-        assert "/audio/say_appeal_go" in x and 'playBeep="true"' in x and "message" in x
+        assert "/audio/say_appeal_go_line" in x and 'playBeep="true"' in x and "message" in x
         x = tel(k, "message", RecordingUrl="https://provider.example/message")  # the message goes to her family doctor
         assert "/audio/say_appeal_ok<" in x and "closing" in x
         assert "<Hangup/>" in tel(k, "closing") and "/audio/closing_ok" in tel(ring(), "closing")
@@ -537,6 +537,38 @@ def test_phone_line_dialogue_and_telegram_binding(monkeypatch):
         assert "Ulandi" in telegram.handle_update(db, {"message": {"text": "/start " + u.link_code, "chat": {"id": 777}}})
         assert telegram.recipients(db, "hamshira", "yellow") == ["777"]
         assert "topilmadi" in telegram.handle_update(db, {"message": {"text": "/start nope", "chat": {"id": 1}}})
+
+
+def test_a_phone_with_a_sim_card_as_the_line(monkeypatch):
+    """Staff ask for a call; the rig next to the phone takes it, reports what happens on the line, and three
+    unanswered attempts become a home visit, as with any other call."""
+    from app import config, simline
+
+    with TestClient(app) as c:
+        p = c.post(
+            "/api/patients/confirm",
+            json={"fields": {"full_name": "SIM Sinov", "birth_year": 1996, "kind": "homilador", "phone": "+998 90 111-22-33"}, "consent": True},
+        ).json()
+        k = c.post(f"/api/patients/{p['id']}/calls", json={"scenario": "homilador"}).json()
+        assert c.post(f"/api/calls/{k['id']}/sim", json={}).status_code == 409 and c.get("/api/meta").json()["sim"] is False  # no rig set up
+        monkeypatch.setattr(config, "GATEWAY_KEY", "kalit")
+        rig = {"X-Gateway-Key": "kalit"}
+        assert c.get("/api/gateway/next").status_code == 403 and c.get("/api/gateway/next", headers={"X-Gateway-Key": "boshqa"}).status_code == 403
+        assert c.post(f"/api/calls/{k['id']}/sim", json={}).status_code == 409  # the rig has not shown up yet
+        assert c.get("/api/gateway/next", headers=rig).json() == {"call": None} and c.get("/api/meta").json()["sim_online"]
+        assert c.post(f"/api/calls/{k['id']}/sim", json={"phone": "12"}).status_code == 400
+        assert c.post(f"/api/calls/{k['id']}/sim", json={"phone": "93 555-66-77"}).json() == {"queued": True, "to": "+998935556677"}
+        job = c.get("/api/gateway/next", headers=rig).json()["call"]
+        assert job == {"token": k["token"], "phone": "+998935556677", "lang": "uz"} and c.get("/api/gateway/next", headers=rig).json()["call"] is None
+        c.post(f"/api/call/{k['token']}/line", data={"state": "talking"})  # the call page, opened when she picked up
+        assert c.get("/api/gateway/state", params={"token": k["token"]}, headers=rig).json() == {"state": "talking"}
+        c.post(f"/api/call/{k['token']}/line", data={"state": "done"})
+        assert c.get("/api/gateway/state", params={"token": k["token"]}, headers=rig).json() == {"state": "done"}
+        for _ in range(3):  # nobody picks up, three times
+            c.post("/api/gateway/report", json={"token": k["token"], "state": "noanswer"}, headers=rig)
+        assert next(x for x in c.get("/api/calls").json() if x["id"] == k["id"])["status"] == "javobsiz"
+        assert [t for t in c.get("/api/tasks", headers={"X-Role": "hamshira"}).json() if t["patient"]["id"] == p["id"] and t["type"] == "hamshira_tashrif"]
+        simline._seen["at"] = 0  # the rig is gone
 
 
 def test_frontend_script_is_complete():

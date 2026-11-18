@@ -32,6 +32,8 @@ SESSION_DAYS = 14
 
 # The polyclinic's own number, shown to a caller who asks for a person (optional).
 CLINIC_PHONE = os.getenv("CLINIC_PHONE", "").strip()
+# Key of the rig that rings through a phone with a SIM card (app/simline.py); empty: no rig.
+GATEWAY_KEY = os.getenv("GATEWAY_KEY", "").strip()
 APPEAL_HOURS = int(os.getenv("APPEAL_HOURS") or "24")  # time to answer a patient's message
 
 # Claude words the closing of a call (optional). The key itself is read by the SDK from ANTHROPIC_API_KEY.

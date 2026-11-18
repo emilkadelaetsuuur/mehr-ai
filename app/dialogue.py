@@ -47,6 +47,11 @@ SAY = {
         "uz": "Yaxshi. Signaldan keyin gapiring. Tugatgach, tugmani bosing.",
         "ru": "Хорошо. Говорите после сигнала. Когда закончите, нажмите кнопку.",
     },
+    # on a phone line there is no button: a pause ends the message
+    "appeal_go_line": {
+        "uz": "Yaxshi. Signaldan keyin gapiring, men tinglayman.",
+        "ru": "Хорошо. Говорите после сигнала, я слушаю.",
+    },
     "appeal_ok": {
         "uz": "Rahmat. Murojaatingiz yozib olindi va shifokoringizga yuborildi.",
         "ru": "Спасибо. Ваше обращение записано и передано вашему врачу.",

@@ -5,7 +5,7 @@ from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from starlette.background import BackgroundTask
 
-from .. import closing, config, core, dialogue, extract, voicelab
+from .. import closing, config, core, dialogue, extract, simline, voicelab
 from ..db import Call
 from .deps import db_session
 
@@ -173,6 +173,15 @@ def finish(token: str, quiet: int = 0, db=Depends(db_session)):
     db.commit()
     # A written closing is spoken sentence by sentence; the fixed phrase is one clip that is already cached.
     return {**res, "closing": c.closing, "closing_parts": closing.sentences(c.closing) if c.closing_by != "shablon" else None}
+
+
+@router.post("/{token}/line")
+def line(token: str, state: str = Form(...), db=Depends(db_session)):
+    """The call page in line mode says where it is: the rig hangs up only after the last word is spoken."""
+    get_call(db, token)
+    if state in ("talking", "done", "nomic"):
+        simline.report(token, state)
+    return {"ok": True}
 
 
 @router.post("/{token}/noanswer")

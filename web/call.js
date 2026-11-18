@@ -1,6 +1,12 @@
 /* Patient side of an AI call. Opens from a link or QR; in production the same dialogue runs over a phone line.
    Questions are pre-synthesised (cached WAV), answers are recorded, recognised (Uzbek/Russian STT) and classified. */
 (() => {
+  // "Line" mode: this page is the voice of a real phone call. A program next to a phone with a SIM card opens
+  // it when the person called picks up; the computer's speakers and microphone are joined to that phone.
+  // Nobody looks at this screen and nobody can press its buttons, so everything goes by voice.
+  const opts = new URLSearchParams(location.search),
+    LINE = opts.get("line") === "1",
+    VAD = Number(opts.get("vad")) || 6; // how loud counts as speech; a quiet line may need a lower number
   const token = location.pathname.split("/").pop(),
     box = document.getElementById("call"),
     player = document.getElementById("player");
@@ -149,7 +155,7 @@
         for (const v of buf) s += (v - 128) * (v - 128);
         const rms = Math.sqrt(s / buf.length);
         if (bar) bar.style.width = Math.min(100, rms * 6) + "%";
-        if (rms > 6) {
+        if (rms > VAD) {
           spoke = true;
           silence = 0;
         } else if (spoke && (silence += 100) >= quietMs) stop();
@@ -246,7 +252,15 @@
     return r.operator ? { operator: true, said: r.transcript } : { value: r.value, flagged: r.flagged, voice: spoken };
   }
 
-  const hangUp = () => stream && stream.getTracks().forEach((x) => x.stop());
+  const onLine = (state) => {
+    const fd = new FormData();
+    fd.append("state", state);
+    return fetch(`/api/call/${token}/line`, { method: "POST", body: fd }).catch(() => {});
+  };
+  const hangUp = () => {
+    stream && stream.getTracks().forEach((x) => x.stop());
+    if (LINE) onLine("done"); // the last word is spoken: the phone may hang up now
+  };
 
   // The caller asked for a person: staff get a task to ring back; the answers given so far are kept.
   async function operator(said) {
@@ -273,7 +287,7 @@
       (box.innerHTML = `<div><div class="ai-note">${t.msg_h}</div><div class="avatar ring">●</div></div><div class="qtext">${t.speak}</div><div>${inner}</div><div class="ai-note">${t.ai}</div>`);
     if (stream) {
       screen(`<div class="listen" id="st">${t.wait}</div><div class="bar"><i></i></div><div class="ans mt"><button id="done">${t.finish}</button></div>`);
-      await say("appeal_go");
+      await say(LINE ? "appeal_go_line" : "appeal_go");
       beep();
       document.getElementById("st").textContent = t.listen;
       document.getElementById("done").onclick = () => record.stop && record.stop();
@@ -299,10 +313,16 @@
   async function run() {
     ring(false);
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } });
+      stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: opts.get("ec") !== "0", noiseSuppression: !LINE || opts.get("ns") === "1" } });
     } catch {
       stream = null;
     }
+    if (LINE && !stream) {
+      // without a microphone the line cannot hear the person called: say so and let the phone hang up
+      box.innerHTML = `<div></div><div class="qtext">Mikrofon topilmadi · Микрофон не найден</div><div></div>`;
+      return onLine("nomic");
+    }
+    if (LINE) onLine("talking");
     ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
     if (ctx.state === "suspended") await ctx.resume();
     box.innerHTML = `<div><div class="avatar ring">N</div><h1>Nigoh</h1></div><div class="qtext">${esc(info.greeting)}</div><div class="ai-note">${t.ai}</div>`;
@@ -359,8 +379,10 @@
     document.documentElement.lang = info.lang;
     if (info.status === "tugadi") {
       box.innerHTML = `<div><div class="avatar">✓</div></div><div class="qtext">${t.ended}</div><div class="ai-note">${t.ai}</div>`;
+      if (LINE) onLine("done");
       return;
     }
+    if (LINE) return run(); // the person has already picked up the phone: start talking
     box.innerHTML = `<div><div class="ai-note">${t.incoming}</div><div class="avatar ring">N</div><h1>Nigoh</h1><div>${t.from}</div><div class="ai-note mt">${esc(info.title)}</div></div>
       <div style="display:flex;gap:70px"><div><button class="cbtn dec" id="dec">✕</button><div class="ai-note mt">${t.decline}</div></div><div><button class="cbtn acc" id="acc">✆</button><div class="ai-note mt">${t.accept}</div></div></div><div class="ai-note">${t.ai}</div>`;
     document.body.addEventListener("pointerdown", () => ring(true), { once: true });

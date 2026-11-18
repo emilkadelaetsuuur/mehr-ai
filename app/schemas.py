@@ -77,5 +77,10 @@ class DialIn(BaseModel):
     phone: str = Field("", max_length=24)  # empty: the number on the patient's card
 
 
+class LineReportIn(BaseModel):
+    token: str = Field(max_length=40)
+    state: str = Field(max_length=20)
+
+
 class LabImportIn(BaseModel):
     csv: str = Field(max_length=400_000)

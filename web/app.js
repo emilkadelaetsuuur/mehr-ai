@@ -323,10 +323,20 @@
       }</div>`;
   function showCall(url, title, text, id) {
     const phone = S.meta?.telephony && id ? `<button class="btn" id="dial">${t("dial")}</button>` : "";
-    const other = phone ? `<label class="mt">${t("dial_to")}</label><input id="dn" type="text" inputmode="tel" placeholder="+998 90 123-45-67">` : "";
+    const sim = S.meta?.sim && id ? `<button class="btn" id="sim">${t("sim_dial")}</button>` : "";
+    const other = phone || sim ? `<label class="mt">${t("dial_to")}</label><input id="dn" type="text" inputmode="tel" placeholder="+998 90 123-45-67">` : "";
     modal(`<h2>${title || t("call_qr")}</h2><p class="small">${text || t("call_qr_text")}</p><div class="center"><img src="/api/qr?u=${encodeURIComponent(url)}" alt="QR" style="width:230px;max-width:100%"></div>${other}
-      <div class="row-b mt">${phone}<a class="btn ${phone ? "ghost" : ""}" href="${url}" target="_blank" rel="noopener">${t("open_here")}</a><button class="btn ghost" id="cp">${t("copy")}</button><button class="btn ghost" data-close>${t("close")}</button></div>`);
+      <div class="row-b mt">${sim}${phone}<a class="btn ${phone || sim ? "ghost" : ""}" href="${url}" target="_blank" rel="noopener">${t("open_here")}</a><button class="btn ghost" id="cp">${t("copy")}</button><button class="btn ghost" data-close>${t("close")}</button></div>`);
     $("#cp").onclick = () => navigator.clipboard?.writeText(url).then(() => toast(t("copied")));
+    if ($("#sim"))
+      $("#sim").onclick = async () => {
+        try {
+          await api(`/calls/${id}/sim`, { json: { phone: $("#dn")?.value || "" } });
+          toast(t("sim_ok"), 6000);
+        } catch (e) {
+          toast(/line/.test(e.message) ? t("sim_off") : e.message, 6000);
+        }
+      };
     if ($("#dial"))
       $("#dial").onclick = async () => {
         try {

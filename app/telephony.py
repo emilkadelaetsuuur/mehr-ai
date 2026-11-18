@@ -166,7 +166,7 @@ def take_offer(db, call, recording_url="", digits=None):
         return hand_over(db, call, text)
     yes = digits == "1" or (bool(text) and extract.yes_no(text, "") == "yes")
     if yes:
-        return _reply(_play(call.token, "say_appeal_go"), _record(call.token, "message", seconds=45, quiet=3, beep=True))
+        return _reply(_play(call.token, "say_appeal_go_line"), _record(call.token, "message", seconds=45, quiet=3, beep=True))
     return _reply(*start_closing(db, call))
 
 

@@ -10,13 +10,13 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import auth, closing, config, core, dialogue, ml, seed, telegram, voicelab
-from .api import patients, public, system, tel, voice, work
+from .api import line, patients, public, system, tel, voice, work
 from .db import Patient, SessionLocal, init_db
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("nigoh")
 WEB = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
-OPEN_PATHS = ("/api/login", "/api/logout", "/api/health", "/api/call/", "/api/tel/", "/api/qr", "/api/meta")
+OPEN_PATHS = ("/api/login", "/api/logout", "/api/health", "/api/call/", "/api/tel/", "/api/gateway/", "/api/qr", "/api/meta")
 _stop = threading.Event()
 
 
@@ -75,7 +75,7 @@ async def session_guard(request: Request, call_next):
     return resp
 
 
-for module in (system, patients, work, voice, public, tel):
+for module in (system, patients, work, voice, public, tel, line):
     app.include_router(module.router)
 
 

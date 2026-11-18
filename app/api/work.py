@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import joinedload
 
-from .. import core, telephony
+from .. import core, simline, telephony
 from ..db import Call, Patient, Task
 from ..schemas import DialIn, NoteIn
 from .deps import call_json, can_close, current_user, db_session, task_json
@@ -65,3 +65,20 @@ def dial(cid: int, body: DialIn = DialIn(), db=Depends(db_session), u=Depends(cu
     core.audit(db, u, "call_dialed", c.patient, f"{c.scenario} -> {to[:5]}…{to[-2:]}")
     db.commit()
     return {"sid": sid, "to": to}
+
+
+@router.post("/calls/{cid}/sim")
+def ring_by_sim(cid: int, body: DialIn = DialIn(), db=Depends(db_session), u=Depends(current_user)):
+    """Ring through the phone with a SIM card that stands by as the telephone line (app/simline.py)."""
+    c = db.get(Call, cid)
+    if not c or c.status in ("tugadi", "javobsiz"):
+        raise HTTPException(404, "call")
+    if not simline.online():
+        raise HTTPException(409, "line")
+    to = telephony.number(body.phone.strip() or c.patient.phone)
+    if not to:
+        raise HTTPException(400, "phone")
+    simline.ask(c, to)
+    core.audit(db, u, "call_dialed", c.patient, f"{c.scenario} SIM -> {to[:5]}…{to[-2:]}")
+    db.commit()
+    return {"queued": True, "to": to}
