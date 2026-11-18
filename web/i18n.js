@@ -245,6 +245,7 @@ window.I18N = {
   unclear: ["javob noaniq", "ответ неясен"],
   closing_said: ["Bemorga aytilgan yakuniy so'z", "Что сказано пациенту в конце"],
   closing_claude: ["Claude yozgan", "сформулировал Claude"],
+  closing_voicelab: ["VoiceLab AI yozgan", "сформулировал ИИ VoiceLab"],
   closing_tpl: ["tayyor matn", "готовая фраза"],
   ai_closing: ["Qo'ng'iroq yakuni", "Финальная фраза звонка"],
   f_ahvol: ["ahvoli yomonlashgan", "состояние ухудшилось"],

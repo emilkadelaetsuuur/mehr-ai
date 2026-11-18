@@ -241,6 +241,35 @@ def test_closing_words_come_from_claude_only_when_they_pass_the_checks(monkeypat
         assert any(t["type"] == "mutaxassis" and t["status"] == "ochiq" for t in c.get(f"/api/patients/{p['id']}").json()["tasks"])
 
 
+def test_closing_writer_follows_the_language_setting(monkeypatch):
+    """Claude writes only in the languages it is set for; elsewhere, and when Claude gives nothing, the VoiceLab
+    model writes; if neither gives an acceptable phrase, the fixed one is spoken."""
+    from types import SimpleNamespace
+
+    from app import closing, config, core, voicelab
+
+    uz = "Bosh og'rig'i borligini aytdingiz. Tezda bir yuz uch raqamiga qo'ng'iroq qiling. Shifokoringizga shoshilinch xabar yuborildi."
+    ru = "Вы сказали о сильной головной боли. Пожалуйста, сразу позвоните по номеру сто три. Вашему врачу отправлено срочное сообщение."
+    res = {"alert": True, "verified": None}
+
+    def call(lang):
+        return SimpleNamespace(scenario="homilador", lang=lang, flags=["kuchli_bosh_ogrigi"], answers={"bosh": {"value": "yes", "transcript": "Ha."}})
+
+    monkeypatch.setattr(closing, "enabled", lambda: True)
+    monkeypatch.setattr(voicelab, "enabled", lambda: True)
+    monkeypatch.setattr(config, "CLAUDE_LANGS", ["ru"])
+    monkeypatch.setattr(closing, "ask", lambda text: ru)
+    monkeypatch.setattr(voicelab, "chat", lambda messages, **kw: uz)
+    assert [n for n, _ in closing.writers("uz")] == ["voicelab"] and [n for n, _ in closing.writers("ru")] == ["claude", "voicelab"]
+    assert closing.compose(call("uz"), res) == (uz, "voicelab")
+    assert closing.compose(call("ru"), res) == (ru, "claude")
+    monkeypatch.setattr(closing, "ask", lambda text: None)  # Claude is late or declined: the next writer is asked
+    monkeypatch.setattr(voicelab, "chat", lambda messages, **kw: ru)
+    assert closing.compose(call("ru"), res) == (ru, "voicelab")
+    monkeypatch.setattr(voicelab, "chat", lambda messages, **kw: "Hammasi yaxshi.")  # fails the checks
+    assert closing.compose(call("uz"), res) == (core.SCENARIOS["homilador"]["closing_alert"]["uz"], "shablon")
+
+
 def test_claude_request_fits_a_gateway(monkeypatch):
     """Straight to Anthropic the request uses the API's own fallback; behind a gateway it is the plain Messages
     request, and a field the gateway refuses is dropped and not sent again."""

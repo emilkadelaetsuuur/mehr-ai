@@ -1,7 +1,9 @@
-"""The last words of an AI call. The rules decide the outcome; Claude only words it for this patient.
+"""The last words of an AI call. The rules decide the outcome; a language model only words it for this patient.
 
-Every scenario file holds one fixed closing phrase per outcome. With a Claude API key set, the closing is
-written for the patient who was just called: it names what she reported and says what happens next.
+Every scenario file holds one fixed closing phrase per outcome. With a language model available, the closing
+is written for the patient who was just called: it names what she reported and says what happens next.
+Two models can write it: Claude (with a Claude API key) and the VoiceLab model the rest of the system already
+uses. Which one writes in which language is a setting, because their speed differs by language.
 The decision never comes from the model: whether to raise the alarm is the result of rules.py and is
 passed to the model as a fact. Each generated phrase is checked before it is spoken (language, length,
 the emergency number in an alarm, no digits for the speech engine). A phrase that fails the check, a
@@ -15,7 +17,7 @@ import logging
 import os
 import re
 
-from . import config, core, rules
+from . import config, core, rules, voicelab
 
 log = logging.getLogger("nigoh.closing")
 _state = {"client": None, "plain": False}
@@ -34,8 +36,9 @@ decide or re-assess it; you put it into words for this particular person. You re
 questions with her answers, the warning signs the rules found, the outcome, and what the system has done.
 
 Write two or three short sentences in the requested language:
-- Refer to what she actually said, so the ending fits this call: name the signs she reported, or acknowledge \
-that she reported none. Use everyday words a village mother would use, not clinical terms.
+- Refer to what she actually said, so the ending fits this call. If she reported warning signs, name them. \
+If she reported none, say that in one short phrase and do not read the list of signs back to her: she has \
+just heard it. Use everyday words a village mother would use, not clinical terms.
 - Outcome "alarm": say plainly that what she described needs a doctor now, ask her to call the emergency \
 number right away, and tell her that her doctor has been sent an urgent message. The emergency number must \
 appear, written in words exactly as given in the request.
@@ -90,7 +93,7 @@ def brief(call, res):
     signs = [rules.COMPLAINTS[f][1 if lang == "ru" else 0] for f in call.flags or [] if f in rules.COMPLAINTS]
     kind = outcome(call, res)
     done = {
-        "alarm": "an urgent message was sent to her doctor and a task with a deadline was opened",
+        "alarm": "an urgent message was sent to her doctor",
         "calm": "her answers were recorded in her card for her doctor",
         "visit_confirmed": "her confirmation was recorded and passed to the head of the polyclinic",
         "visit_disputed": "the head of the polyclinic was told that she says nobody came, although the visit was marked as done",
@@ -118,13 +121,16 @@ def _send(client, text):
     if direct():
         # if a safety classifier declines, the API itself retries the request on its fallback model
         return client.beta.messages.create(**common, **effort, betas=["server-side-fallback-2026-07-01"], fallbacks="default")
-    # A gateway in front of the API gets the plain Messages request. Gateways often lag behind the API, so a
-    # refused `output_config` is dropped and not sent again.
+    # A gateway in front of the API gets the plain Messages request. Gateways often lag behind the API, so
+    # optional fields it refuses are dropped and not sent again.
+    if "sonnet-5-5" in config.CLAUDE_MODEL:
+        # The one current model whose thinking can be switched off: three sentences need none, and a caller is waiting.
+        effort["thinking"] = {"type": "between_tools"}
     if not _state["plain"]:
         try:
             return client.messages.create(**common, **effort)
         except anthropic.BadRequestError as e:
-            log.warning("claude: the gateway refused output_config (%s); sending the plain request from now on", str(e.message)[:160])
+            log.warning("claude: the gateway refused %s (%s); sending the plain request from now on", "/".join(effort), str(e.message)[:160])
             _state["plain"] = True
     return client.messages.create(**common)
 
@@ -167,21 +173,39 @@ def acceptable(text, lang, alarm):
     return None
 
 
+def ask_voicelab(text):
+    """The same request to the VoiceLab language model: quick in Uzbek, and it runs in Uzbekistan."""
+    return voicelab.chat([{"role": "system", "content": SYSTEM}, {"role": "user", "content": text}], max_tokens=220, temperature=0.3, timeout=8)
+
+
+def writers(lang):
+    """Who may word a closing in this language, in the order they are tried: [(name, function)]."""
+    out = []
+    if enabled() and lang in config.CLAUDE_LANGS:
+        out.append(("claude", ask))
+    if config.VOICELAB_CLOSING and voicelab.enabled():
+        out.append(("voicelab", ask_voicelab))
+    return out
+
+
 def compose(call, res):
-    """Closing words for a finished call and who wrote them: ('...', 'claude') or ('...', 'shablon')."""
-    if enabled():
+    """Closing words for a finished call and who wrote them: 'claude', 'voicelab', or 'shablon' for the fixed phrase."""
+    lang = call.lang or "uz"
+    for name, write in writers(lang):
         try:
-            text = ask(brief(call, res))
+            text = write(brief(call, res))
         except ImportError:
-            log.warning("claude: the anthropic package is not installed")
-            text = None
+            log.warning("%s: the anthropic package is not installed", name)
+            continue
         except Exception:  # anything unexpected must not break the end of a call
-            log.exception("claude: closing failed")
-            text = None
-        if text:
-            text = re.sub(r"\s+", " ", text).strip().strip('"«»“”')
-            why = acceptable(text, call.lang or "uz", outcome(call, res) == "alarm")
-            if why is None:
-                return text, "claude"
-            log.warning("claude: closing rejected (%s)", why)
+            log.exception("%s: closing failed", name)
+            continue
+        if not text:
+            continue
+        text = re.sub("[‘’ʻʼ`]", "'", text)  # one spelling of the Uzbek apostrophe, as in the scenario texts
+        text = re.sub(r"\s+", " ", text).strip().strip('"«»“”')
+        why = acceptable(text, lang, outcome(call, res) == "alarm")
+        if why is None:
+            return text, name
+        log.warning("%s: closing rejected (%s)", name, why)
     return fixed(call, res), "shablon"

@@ -25,7 +25,8 @@ SAMPLE = {
 def main():
     base = os.getenv("ANTHROPIC_BASE_URL", "").strip() or "https://api.anthropic.com"
     print(
-        f"key: {'set' if closing.enabled() else 'MISSING'} | address: {base} | direct: {closing.direct()} | model: {config.CLAUDE_MODEL} | timeout: {config.CLAUDE_TIMEOUT:g}s"
+        f"key: {'set' if closing.enabled() else 'MISSING'} | address: {base} | direct: {closing.direct()} "
+        f"| model: {config.CLAUDE_MODEL} | timeout: {config.CLAUDE_TIMEOUT:g}s"
     )
     if not closing.enabled():
         return

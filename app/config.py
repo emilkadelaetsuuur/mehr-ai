@@ -32,5 +32,8 @@ SESSION_DAYS = 14
 
 # Claude words the closing of a call (optional). The key itself is read by the SDK from ANTHROPIC_API_KEY.
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "").strip() or "claude-opus-5-5"
-CLAUDE_TIMEOUT = float(os.getenv("CLAUDE_TIMEOUT", "9"))  # seconds a caller may wait before the fixed phrase is used
+CLAUDE_TIMEOUT = float(os.getenv("CLAUDE_TIMEOUT", "8"))  # seconds a caller may wait for Claude before the next writer is asked
 CLAUDE_CLOSING = os.getenv("CLAUDE_CLOSING", "1").strip() != "0"
+# Languages in which Claude words the closing. Elsewhere, and when Claude is late, the VoiceLab model writes it.
+CLAUDE_LANGS = [x.strip() for x in os.getenv("CLAUDE_LANGS", "uz,ru").split(",") if x.strip()]
+VOICELAB_CLOSING = os.getenv("VOICELAB_CLOSING", "1").strip() != "0"
