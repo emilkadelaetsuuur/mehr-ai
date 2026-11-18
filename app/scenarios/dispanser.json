@@ -1,0 +1,60 @@
+{
+ "title": {
+  "uz": "Dispanser nazorati: navbatdagi so'rov",
+  "ru": "Диспансерное наблюдение: плановый опрос"
+ },
+ "who": "dispanser",
+ "basis": "Dispanser kuzatuvi: davolanishga rioya qilish va rejali ko'riklar. Qo'ng'iroqda tashxis aytilmaydi; suhbatdan oldin tug'ilgan yil so'raladi",
+ "private": true,
+ "greeting": {
+  "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. Sog'lig'ingiz va shifokor tayinlagan davolanish haqida to'rtta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам четыре коротких вопроса о вашем самочувствии и назначенном врачом лечении. Отвечайте «да» или «нет»."
+ },
+ "intro": {
+  "uz": "Sog'lig'ingiz va shifokor tayinlagan davolanish haqida to'rtta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Задам четыре коротких вопроса о вашем самочувствии и назначенном врачом лечении. Отвечайте «да» или «нет»."
+ },
+ "questions": [
+  {
+   "id": "dori",
+   "uz": "Shifokor yozgan dorilarni ichmay qo'ygan kunlaringiz bo'ldimi?",
+   "ru": "Были ли дни, когда вы не принимали назначенные врачом лекарства?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "extra": "dori"
+  },
+  {
+   "id": "korik",
+   "uz": "Oxirgi belgilangan ko'rik yoki tahlilni o'tkazib yubordingizmi?",
+   "ru": "Пропустили ли вы последний назначенный осмотр или анализ?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "extra": "korik"
+  },
+  {
+   "id": "nojoya",
+   "uz": "Dorilardan keyin toshma, ko'ngil aynishi yoki boshqa noxush holat bo'ldimi?",
+   "ru": "Были ли после лекарств сыпь, тошнота или другое недомогание?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "extra": "nojoya"
+  },
+  {
+   "id": "ahvol",
+   "uz": "Oxirgi kunlarda isitma, kuchli holsizlik yoki ahvolingiz yomonlashishi kuzatildimi?",
+   "ru": "Были ли в последние дни жар, сильная слабость или ухудшение самочувствия?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "extra": "ahvol"
+  }
+ ],
+ "closing_ok": {
+  "uz": "Rahmat! Javoblaringiz shifokoringizga yetkazildi. Sog' bo'ling!",
+  "ru": "Спасибо! Ваши ответы переданы врачу. Будьте здоровы!"
+ },
+ "closing_alert": {
+  "uz": "Javoblaringizda xavotirli belgilar bor. Iltimos, hoziroq bir yuz uch raqamiga qo'ng'iroq qiling. Shifokoringizga shoshilinch xabar yuborildi.",
+  "ru": "В ваших ответах есть тревожные признаки. Пожалуйста, сейчас же позвоните по номеру сто три. Вашему врачу отправлено срочное сообщение."
+ },
+ "id": "dispanser"
+}

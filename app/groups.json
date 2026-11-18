@@ -1,0 +1,52 @@
+{
+ "_izoh": "Dispanser guruhlari. `secret` guruhlar maxfiy: ro'yxatlarda nomi ko'rinmaydi, kartada faqat mutaxassis, rahbar va bemor biriktirilgan shifokor ko'radi; qo'ng'iroqda tashxis aytilmaydi. `icd` — DMED yuborgan tashxis kodi shu oraliqqa tushsa, bemor guruhga qo'shiladi.",
+ "oiv": {
+  "uz": "OIV infeksiyasi",
+  "ru": "ВИЧ-инфекция",
+  "secret": true,
+  "icd": [
+   "B20-B24",
+   "Z21"
+  ]
+ },
+ "jyb": {
+  "uz": "Jinsiy yo'l bilan yuqadigan infeksiyalar",
+  "ru": "Инфекции, передающиеся половым путём",
+  "secret": true,
+  "icd": [
+   "A50-A64"
+  ]
+ },
+ "sil": {
+  "uz": "Sil (tuberkulyoz)",
+  "ru": "Туберкулёз",
+  "secret": true,
+  "icd": [
+   "A15-A19"
+  ]
+ },
+ "gepatit": {
+  "uz": "Surunkali virusli gepatit",
+  "ru": "Хронический вирусный гепатит",
+  "secret": true,
+  "icd": [
+   "B18"
+  ]
+ },
+ "diabet": {
+  "uz": "Qandli diabet",
+  "ru": "Сахарный диабет",
+  "secret": false,
+  "icd": [
+   "E10-E14"
+  ]
+ },
+ "gipertoniya": {
+  "uz": "Arterial gipertenziya",
+  "ru": "Артериальная гипертензия",
+  "secret": false,
+  "icd": [
+   "I10-I15"
+  ]
+ }
+}

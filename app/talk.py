@@ -19,7 +19,7 @@ import json
 import os
 import re
 
-from . import closing, core, extract
+from . import closing, core, extract, vaccines, voicelab
 from .db import Patient
 
 HERE = os.path.dirname(__file__)
@@ -40,7 +40,22 @@ THANKS_PLAIN = {"uz": "Rahmat.", "ru": "Спасибо."}
 # said after the scenario's own introduction, so she knows the call is not only a questionnaire
 YOUR_TURN = {"uz": "Oxirida o'z savollaringizni berishingiz mumkin.", "ru": "В конце вы сможете задать свои вопросы."}
 
-PERSON = {"homilador": "a pregnant woman", "tuqqan": "a woman who gave birth recently", "chaqaloq": "the mother of a newborn"}
+# said when the call follows a stay in a hospital; the hospital and the diagnosis are not named aloud
+AFTER_HOSPITAL = {
+    "uz": "Shifoxonadan chiqqaningizdan keyin ahvolingizni bilish uchun qo'ng'iroq qilyapman.",
+    "ru": "Звоню узнать, как вы себя чувствуете после выписки из больницы.",
+}
+POLITE = {"f": " opa", "m": " aka"}  # how a woman and a man are addressed by first name in Uzbek
+
+PERSON = {
+    "homilador": "a pregnant woman",
+    "tuqqan": "a woman who gave birth recently",
+    "chaqaloq": "the mother of a newborn",
+    "bola": "the parent of a child whose vaccination has come due",
+    "dispanser": "a patient under regular dispensary follow-up at the polyclinic (the diagnosis is confidential: you do not know it and never guess it)",
+}
+# What a first-time mother is offered to hear after the questions: the offer and the leaflet notes read to her.
+TIPS = {"homilador": ("tips_q_preg", ["xavf_homila", "ovqat", "korik"]), "ona": ("tips_q_baby", ["emizish", "kindik", "uyqu", "xavf_chaqaloq"])}
 
 SYSTEM = """You are the voice of Nigoh, the AI assistant of a district polyclinic in Uzbekistan, in a follow-up \
 phone call with {person}. She has just asked a question in her own words. Your reply is turned into speech \
@@ -125,16 +140,69 @@ def opening(db, call):
     """What is said before any question: (hello, intro). `hello` says who is calling and asks whether the
     right person is on the line; `intro` follows her "yes". A call about a newborn is a call to the mother."""
     p, lang = call.patient, call.lang if call.lang in ("uz", "ru") else "uz"
-    mother = db.get(Patient, p.mother_id) if p.kind == "chaqaloq" and p.mother_id else None
-    if p.kind == "chaqaloq" and not mother:
+    child = p.kind in vaccines.CHILD
+    mother = db.get(Patient, p.mother_id) if child and p.mother_id else None
+    if child and not mother:
         ask, name = IS_IT_YOUR_CHILD[lang].format(name=spoken(p.full_name, lang)), ""
     else:
         who = mother or p
         ask, name = IS_IT_YOU[lang].format(name=spoken(who.full_name, lang)), given(who.full_name, lang)
-        if name and lang == "uz" and p.kind in PERSON:
-            name += " opa"  # the polite way to address a woman by her first name
+        woman = who.sex == "f" or (not who.sex and (child or p.kind in ("homilador", "tuqqan")))
+        if name and lang == "uz":
+            name += POLITE["f"] if woman else POLITE.get(who.sex, "")
     thanks = THANKS[lang].format(name=name) if name else THANKS_PLAIN[lang]
-    return HELLO[lang].format(ask=ask), f"{thanks} {core.SCENARIOS[call.scenario]['intro'][lang]} {YOUR_TURN[lang]}"
+    context = call.context or {}
+    about = vaccines.sentence(context, lang, given(p.full_name, lang) if lang == "uz" else "") if context.get("doses") else ""
+    about = about or (AFTER_HOSPITAL[lang] if context.get("hospital") else "")
+    return HELLO[lang].format(ask=ask), " ".join(x for x in (thanks, about, core.SCENARIOS[call.scenario]["intro"][lang], YOUR_TURN[lang]) if x)
+
+
+def topic(call):
+    """Whose leaflet a call's answers come from: the kind of patient, or what the scenario is about."""
+    who = core.SCENARIOS[call.scenario].get("who")
+    return "dispanser" if who == "dispanser" else "bola" if who == "emlash" else call.patient.kind
+
+
+ASK = {"homilador": "ask_q_homilador", "tuqqan": "ask_q_ona", "chaqaloq": "ask_q_ona", "bola": "ask_q_bola", "dispanser": "ask_q_dispanser"}
+
+
+def ask_key(call):
+    """Which invitation to ask her own questions a call uses: it names only what concerns this person."""
+    return ASK.get(topic(call), "ask_q")
+
+
+def needs_year(call):
+    """A call about dispensary follow-up asks the year of birth after the name: a second key before anything is said."""
+    return bool(core.SCENARIOS[call.scenario].get("private") and call.patient.birth_year)
+
+
+def year_matches(said, year):
+    """'yes' when the spoken or typed words name this year of birth, 'no' when they name another, 'unclear'
+    when no year can be read. Two digits are enough: "to'qson sakkiz" is how a year is usually said."""
+    found = re.findall(r"\d+", said or "")
+    if not found and said and voicelab.enabled():  # the year was said in words: the model writes it in digits
+        out = voicelab.chat(
+            [
+                {"role": "system", "content": "Matnda aytilgan tug'ilgan yilni raqam bilan yoz. Faqat son. Yil aytilmagan bo'lsa: YOQ."},
+                {"role": "user", "content": said},
+            ],
+            max_tokens=8,
+        )
+        found = re.findall(r"\d+", out or "")
+    if not found:
+        return "unclear"
+    return "yes" if any(int(x) == year or (len(x) <= 2 and int(x) == year % 100) for x in found) else "no"
+
+
+def tips(db, call):
+    """For a first-time mother: (the offer's phrase, the leaflet notes that are read to her), else None."""
+    p, who = call.patient, core.SCENARIOS[call.scenario].get("who")
+    mother = db.get(Patient, p.mother_id) if p.kind in vaccines.CHILD and p.mother_id else p
+    if who not in ("homilador", "tuqqan", "chaqaloq") or not mother or mother.parity != 0:
+        return None
+    offer, ids = TIPS["homilador" if who == "homilador" else "ona"]
+    lang = call.lang if call.lang in ("uz", "ru") else "uz"
+    return offer, [n[lang] for i in ids for n in ADVICE["notes"] if n["id"] == i]
 
 
 def short(said):

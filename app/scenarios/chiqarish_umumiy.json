@@ -1,0 +1,59 @@
+{
+ "title": {
+  "uz": "Shifoxonadan keyin: umumiy nazorat",
+  "ru": "После больницы: общий контроль"
+ },
+ "who": "shifoxona",
+ "basis": "DMED yuborgan chiqarish ma'lumoti bo'yicha faol kuzatish; savollarni shifokor tasdiqlaydi",
+ "greeting": {
+  "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. Shifoxonadan keyingi ahvolingiz haqida to'rtta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам четыре коротких вопроса о самочувствии после больницы. Отвечайте «да» или «нет»."
+ },
+ "intro": {
+  "uz": "Shifoxonadan keyingi ahvolingiz haqida to'rtta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Задам четыре коротких вопроса о самочувствии после больницы. Отвечайте «да» или «нет»."
+ },
+ "questions": [
+  {
+   "id": "isitma",
+   "uz": "Tana haroratingiz ko'tarildimi?",
+   "ru": "Поднималась ли у вас температура?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "complaint": "isitma"
+  },
+  {
+   "id": "ogriq",
+   "uz": "Kuchli og'riq bezovta qilyaptimi?",
+   "ru": "Беспокоит ли вас сильная боль?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "extra": "ogriq"
+  },
+  {
+   "id": "ahvol",
+   "uz": "Shifoxonadan chiqqaningizdan keyin ahvolingiz yomonlashdimi?",
+   "ru": "Стало ли вам хуже после выписки?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "extra": "ahvol"
+  },
+  {
+   "id": "dori",
+   "uz": "Shifokor yozgan dorilarni ichmay qo'ygan kunlaringiz bo'ldimi?",
+   "ru": "Были ли дни, когда вы не принимали назначенные врачом лекарства?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "extra": "dori"
+  }
+ ],
+ "closing_ok": {
+  "uz": "Rahmat! Javoblaringiz shifokoringizga yetkazildi. Sog' bo'ling!",
+  "ru": "Спасибо! Ваши ответы переданы врачу. Будьте здоровы!"
+ },
+ "closing_alert": {
+  "uz": "Javoblaringizda xavotirli belgilar bor. Iltimos, hoziroq bir yuz uch raqamiga qo'ng'iroq qiling. Shifokoringizga shoshilinch xabar yuborildi.",
+  "ru": "В ваших ответах есть тревожные признаки. Пожалуйста, сейчас же позвоните по номеру сто три. Вашему врачу отправлено срочное сообщение."
+ },
+ "id": "chiqarish_umumiy"
+}

@@ -171,8 +171,9 @@ def test_symptom_calls_alarm_only_on_yes():
     must not be told to ring 103, and a single "yes" must raise the alarm."""
     from app import core
 
-    symptom = [s for s in core.SCENARIOS.values() if s["id"] != "tashrif_tasdiq"]  # the visit check asks "did the doctor come?"
-    assert len(symptom) == 3 and all(q["flag_if"] == "yes" for s in symptom for q in s["questions"] if q["type"] == "yesno")
+    # two scenarios ask about something that should have happened: "did the doctor come?", "was the child vaccinated?"
+    symptom = [s for s in core.SCENARIOS.values() if s["id"] not in ("tashrif_tasdiq", "emlash")]
+    assert len(symptom) == 8 and all(q["flag_if"] == "yes" for s in symptom for q in s["questions"] if q["type"] == "yesno")
     with TestClient(app) as c:
         p = c.post("/api/patients/confirm", json={"fields": {"full_name": "Qo'ng'iroq Sinov", "birth_year": 1996, "kind": "homilador"}, "consent": True}).json()
 
@@ -627,12 +628,16 @@ def test_a_call_names_the_patient_and_answers_her_questions_from_the_leaflet(mon
     assert all(n["src"] in talk.ADVICE["sources"] and n["who"] and not re.search(r"\d", n["uz"] + n["ru"]) for n in talk.ADVICE["notes"])
     assert talk.notes("homilador") and talk.notes("chaqaloq") and not talk.notes("boshqa")
 
-    baby, mother = SimpleNamespace(kind="chaqaloq", mother_id=7, full_name="Valiyev Amir"), SimpleNamespace(full_name="Valiyeva Madina")
+    baby, mother = SimpleNamespace(kind="chaqaloq", mother_id=7, full_name="Valiyev Amir", sex="m"), SimpleNamespace(full_name="Valiyeva Madina", sex="f")
     db = SimpleNamespace(get=lambda model, pk: mother if pk == 7 else None)
-    hello, intro = talk.opening(db, SimpleNamespace(patient=baby, lang="uz", scenario="chaqaloq_30kun"))  # a call about a newborn is a call to the mother
+
+    def about(child, **more):
+        return SimpleNamespace(patient=child, lang="uz", scenario="chaqaloq_30kun", context={}, **more)
+
+    hello, intro = talk.opening(db, about(baby))  # a call about a newborn is a call to the mother
     assert "Men Madina Valiyeva bilan gaplashyapmanmi?" in hello and intro.startswith("Rahmat, Madina opa. Chaqalog'ingiz haqida")
     baby.mother_id = None
-    assert "Amir Valiyev — sizning farzandingizmi?" in talk.opening(db, SimpleNamespace(patient=baby, lang="uz", scenario="chaqaloq_30kun"))[0]
+    assert "Amir Valiyev — sizning farzandingizmi?" in talk.opening(db, about(baby))[0]
 
     with TestClient(app) as c:
         card = {"full_name": "Karimova Zilola", "birth_year": 1996, "kind": "homilador", "doctor": "Qosimova D.", "phone": "+998 90 111-22-33"}
@@ -735,6 +740,259 @@ def test_a_runaway_tab_is_told_to_sign_in_again(monkeypatch):
         assert c.get("/api/tasks").status_code == 200 and c.get("/api/me").status_code == 200  # only the flooded list is closed
 
 
+def test_dmed_reports_a_hospital_stay_and_gets_the_call_back(monkeypatch):
+    """DMED reports an emergency admission: the family doctor sees at once who, where, when and why. The
+    discharge brings the diagnosis: the active call opens, an AI call with the questions written for that
+    diagnosis is planned for the next day, and its answers, the warning and the tasks go back to DMED."""
+    from types import SimpleNamespace
+
+    from app import config, core, dmed
+    from app.db import SessionLocal
+
+    assert (
+        dmed.in_icd("I21.0", ["I00-I99"])
+        and dmed.in_icd("Z21", ["B20-B24", "Z21"])
+        and not dmed.in_icd("B19", ["B20-B24"])
+        and not dmed.in_icd("", ["I00-I99"])
+    )
+    with TestClient(app) as c:
+        doctor = {"X-Role": "shifokor"}  # the demo family doctor is Qosimova D.
+        card = {"full_name": "Yurak Sinov", "birth_year": 1970, "kind": "boshqa", "doctor": "Qosimova D.", "pinfl": "30101700000011"}
+        p = c.post("/api/patients/confirm", json={"fields": card, "consent": True}).json()
+
+        def sim(**body):
+            return c.post("/api/dmed/simulate", json={"patient_id": p["id"], **body})
+
+        r = sim(event="admit", hospital="Tuman markaziy shifoxonasi", reason="Ko'krakda og'riq", brought_by="103 brigadasi")
+        assert r.status_code == 200 and r.json()["accepted"][0]["kind"] == "Encounter: yotqizildi"
+        assert sim(event="admit", hospital="Boshqa shifoxona").status_code == 409  # she is there already
+        d = c.get("/api/dashboard", headers=doctor).json()
+        note = next(n for n in d["notices"] if n["patient_id"] == p["id"])
+        assert note["level"] == "red" and all(
+            x in note["uz"] for x in ("SHOSHILINCH YOTQIZILDI", "Tuman markaziy shifoxonasi", "Ko'krakda og'riq", "103 brigadasi")
+        )
+        stay = next(x for x in d["stays"] if x["patient"]["id"] == p["id"])
+        assert stay["emergency"] and stay["reason"] == "Ko'krakda og'riq" and stay["discharged_at"] is None and d["in_hospital"] >= 1
+        assert any(x["id"] == p["id"] and x["in_hospital"] for x in c.get("/api/patients", params={"hospital": 1}).json())
+
+        r = sim(event="discharge", icd10="i21.0", diagnosis="O'tkir miokard infarkti", advice="Dorilarni uzluksiz ichish; bir haftadan keyin kardiolog")
+        assert r.json()["accepted"][0]["kind"] == "Encounter: chiqarildi"
+        full = c.get(f"/api/patients/{p['id']}", headers=doctor).json()
+        assert full["icd10"] == "I21.0" and len(full["stays"]) == 1 and full["stays"][0]["discharged_at"] and "kardiolog" in full["stays"][0]["advice"]
+        assert full["stays"][0]["diagnosis"] == "O'tkir miokard infarkti" and "Tuman markaziy shifoxonasi" in full["diagnosis"]
+        assert any(t["type"] == "faol_chaqiruv" and t["status"] == "ochiq" for t in full["tasks"])
+        (call,) = [k for k in full["calls"] if k["status"] == "rejalashtirilgan"]
+        assert call["scenario"] == "chiqarish_yurak"  # the questions written for this diagnosis
+        info = c.get(f"/api/call/{call['token']}").json()
+        assert "Shifoxonadan chiqqaningizdan keyin" in info["intro"] and "infarkt" not in info["intro"] + info["hello"]  # the diagnosis is not said aloud
+        assert [q["id"] for q in info["questions"]] == ["kokrak", "nafas", "shish", "dori"]
+        for q in info["questions"]:
+            c.post(f"/api/call/{call['token']}/answer", data={"qid": q["id"], "value": "yes" if q["id"] == "kokrak" else "no"})
+        res = c.post(f"/api/call/{call['token']}/finish").json()
+        assert res["alert"] and res["zone"] == "red" and "kokrak_ogrigi" in res["flags"]
+        assert [t for t in c.get("/api/tasks", headers={"X-Role": "mutaxassis"}).json() if t["patient"]["id"] == p["id"] and t["type"] == "mutaxassis"]
+
+        # everything went back to DMED: the answers, the warning, the tasks
+        with SessionLocal() as db:
+            while dmed.flush(db):  # the outbox is sent in batches
+                pass
+        log = c.get("/api/dmed").json()
+        mine = [m for m in log["messages"] if m["patient"] and m["patient"]["id"] == p["id"]]
+        out = [m for m in mine if m["direction"] == "out"]
+        assert {"QuestionnaireResponse: qo'ng'iroq", "Flag: xavf belgisi", "Task: vazifa"} <= {m["kind"] for m in out}
+        assert log["mode"] == "sinov" and all(m["status"] == "yuborildi" for m in out) and log["waiting"] == 0
+        answers = next(m["payload"] for m in out if m["kind"].startswith("QuestionnaireResponse"))
+        assert answers["subject"]["identifier"]["value"] == "30101700000011"
+        assert {i["linkId"]: i["answer"][0] for i in answers["item"]}["kokrak"] == {"valueBoolean": True}
+        assert [m["kind"] for m in mine if m["direction"] == "in"] == ["Encounter: chiqarildi", "Encounter: yotqizildi"]
+        assert c.get("/api/dmed", headers={"X-Role": "hamshira"}).status_code == 403  # the log holds patients' data
+
+        # the door for the real platform: closed without a key, open with the agreed one
+        person = SimpleNamespace(pinfl="30101700000011", full_name="Yurak Sinov")
+        again = dmed.encounter(person, "Viloyat shifoxonasi", core.now(), emergency=False, reason="Rejali davolanish")
+        assert c.post("/api/dmed/fhir", json=again).status_code == 403
+        monkeypatch.setattr(config, "DMED_INBOUND_KEY", "kelishilgan-kalit")
+        assert c.post("/api/dmed/fhir", json=again, headers={"X-Dmed-Key": "boshqa"}).status_code == 403
+        r = c.post("/api/dmed/fhir", json=again, headers={"X-Dmed-Key": "kelishilgan-kalit"}).json()
+        assert r["accepted"][0]["kind"] == "Encounter: yotqizildi"
+        planned = next(n for n in c.get("/api/dashboard", headers=doctor).json()["notices"] if n["patient_id"] == p["id"] and "Viloyat shifoxonasi" in n["uz"])
+        assert planned["level"] == "yellow" and "SHIFOXONAGA YOTQIZILDI" in planned["uz"]  # not an emergency
+        stranger = dmed.encounter(SimpleNamespace(pinfl="99999999999999", full_name="Notanish Odam"), "Shahar shifoxonasi", core.now())
+        assert c.post("/api/dmed/fhir", json=stranger, headers={"X-Dmed-Key": "kelishilgan-kalit"}).json()["accepted"][0]["status"] == "topilmadi"
+
+    # an Encounter shaped by the older FHIR version is read as well
+    old = {
+        "resourceType": "Encounter",
+        "id": "r4-1",
+        "status": "finished",
+        "class": {"code": "EMER"},
+        "subject": {"identifier": {"value": "30101700000011"}},
+        "serviceProvider": {"display": "Viloyat shifoxonasi"},
+        "period": {"start": "2026-11-10T08:00:00+05:00", "end": "2026-11-14T10:00:00+05:00"},
+        "reasonCode": [{"text": "Bosh aylanishi"}],
+        "diagnosis": [{"condition": {"display": "Gipertonik kriz"}}],
+        "hospitalization": {"admitSource": {"text": "103 brigadasi"}},
+    }
+    f = dmed.read_encounter(old)
+    assert f["over"] and f["emergency"] and f["hospital"] == "Viloyat shifoxonasi" and f["diagnosis"] == "Gipertonik kriz" and f["reason"] == "Bosh aylanishi"
+    assert f["brought_by"] == "103 brigadasi" and f["start"].hour == 3 and f["end"].day == 14  # times are kept in UTC
+
+
+def test_the_calendar_finds_children_whose_vaccination_is_due_and_asks_their_parents():
+    """Nobody keeps a list: the calendar and the date of birth say whose vaccination has come due. The call
+    goes to the mother, names the vaccinations, and asks only the questions that follow from her answer.
+    "Not done" gives the nurse a task; "done" is kept as the parent's word until DMED confirms it."""
+    from app import dmed
+    from app.db import SessionLocal
+
+    with TestClient(app) as c:
+        nurse = {"X-Role": "hamshira"}
+        (kid,) = c.get("/api/patients", params={"q": "Karimov Yusuf"}).json()
+
+        def doses():
+            return {d["id"]: d["state"] for d in c.get(f"/api/patients/{kid['id']}").json()["vaccines"]}
+
+        assert kid["kind"] == "bola" and kid["vax"] == "due"
+        assert (doses()["penta1"], doses()["penta2"], doses()["mmr1"]) == ("done", "due", "later") and "hpv" not in doses()  # a boy
+        behind = c.get("/api/patients", params={"vax": 1}).json()
+        assert behind and all(x["vax"] for x in behind) and any(x["id"] == kid["id"] for x in behind)
+        cover = c.get("/api/dashboard").json()["vaccines"]
+        assert cover["children"] > 50 and cover["overdue"] >= 1 and cover["in_time_pct"] < 100
+        fit = c.get("/api/calls/audience", params={"scenario": "emlash"}).json()
+        assert fit["who"] == "emlash" and 1 <= fit["fit"] <= cover["overdue"] + cover["due"]
+
+        def trial():
+            (call,) = c.post("/api/calls/round", json={"scenario": "emlash", "test": True}).json()["calls"]
+            return call
+
+        def answer(call, qid, value):
+            c.post(f"/api/call/{call['token']}/answer", data={"qid": qid, "value": value})
+
+        call = trial()
+        assert call["patient"]["name"] == "Karimov Yusuf"
+        info = c.get(f"/api/call/{call['token']}").json()
+        assert "Men Nilufar Karimova bilan gaplashyapmanmi?" in info["hello"]  # the call is to the mother
+        assert (
+            "farzandingiz Yusufga uch oylik emlashlar muddati kelgan: pentavalent, poliomiyelitga qarshi, pnevmokokkka qarshi va rotavirusga qarshi"
+            in info["intro"]
+        )
+        asked = [(q["id"], q["if"]) for q in info["questions"]]
+        assert asked == [("emlandi", None), ("reaksiya", {"emlandi": "yes"}), ("kasal", {"emlandi": "no"}), ("keladi", {"emlandi": "no"})]
+
+        for qid, value in (("emlandi", "no"), ("kasal", "no"), ("keladi", "no")):  # not done, and they cannot come
+            answer(call, qid, value)
+        res = c.post(f"/api/call/{call['token']}/finish").json()
+        assert not res["alert"] and {"emlanmagan", "emlashga_kelolmaydi"} <= set(res["flags"]) and res["zone"] == "green"  # not a sign of illness
+        (task,) = [t for t in c.get("/api/tasks", headers=nurse).json() if t["patient"]["id"] == kid["id"]]
+        assert task["type"] == "emlash" and "Penta-2" in task["reason"] and "kela olmaydi" in task["reason"]
+        assert doses()["penta2"] == "due"
+
+        call = trial()  # the next call: the parent says it is done
+        assert call["patient"]["name"] == "Karimov Yusuf"
+        answer(call, "emlandi", "yes")
+        answer(call, "reaksiya", "no")
+        assert c.post(f"/api/call/{call['token']}/finish").json()["flags"] == []
+        assert doses()["penta2"] == "said" and doses()["rota2"] == "said"  # her word, not yet a record
+        assert c.get("/api/patients", params={"q": "Karimov Yusuf"}).json()[0]["vax"] is None
+        with SessionLocal() as db:
+            while dmed.flush(db):  # the outbox is sent in batches
+                pass
+        sent = [m for m in c.get("/api/dmed").json()["messages"] if m["patient"] and m["patient"]["id"] == kid["id"] and m["kind"].startswith("Immunization")]
+        assert len(sent) == 4 and all(m["payload"]["primarySource"] is False and m["status"] == "yuborildi" for m in sent)
+
+        # the vaccination room's record arrives through DMED: now it is done
+        r = c.post("/api/dmed/simulate", json={"patient_id": kid["id"], "event": "vaccine"}).json()
+        assert len(r["accepted"]) == 4 and all(m["kind"] == "Immunization: emlandi" for m in r["accepted"])
+        assert doses()["penta2"] == "done" and doses()["opv2"] == "done"
+        assert c.post("/api/dmed/simulate", json={"patient_id": kid["id"], "event": "vaccine"}).status_code == 400  # nothing is due any more
+
+        # a bad reaction after a vaccination is a complaint: the alarm goes the usual road
+        other = next(x for x in c.get("/api/patients", params={"vax": 1}).json() if x["id"] != kid["id"])
+        call = c.post(f"/api/patients/{other['id']}/calls", json={"scenario": "emlash"}).json()
+        answer(call, "emlandi", "yes")
+        answer(call, "reaksiya", "yes")
+        res = c.post(f"/api/call/{call['token']}/finish").json()
+        assert res["alert"] and res["zone"] == "red" and "emlash_reaksiya" in res["flags"]
+
+
+def test_a_confidential_group_is_marked_for_doctors_and_never_named_in_a_call():
+    """A patient under dispensary follow-up carries a mark. Which disease it is, only the specialist, the
+    head and her own doctor see; the nurse sees that there is follow-up. The call asks the year of birth
+    after the name, never names the disease, and its notices do not carry it either."""
+    import json
+
+    from app import talk
+
+    assert talk.year_matches("1990", 1990) == "yes" and talk.year_matches("to'qson, 90", 1990) == "yes" and talk.year_matches("1985", 1990) == "no"
+    assert talk.year_matches("bilmayman", 1990) == "unclear" and talk.year_matches("", 1990) == "unclear"
+    with TestClient(app) as c:
+        nurse, expert = {"X-Role": "hamshira"}, {"X-Role": "mutaxassis"}
+
+        def find(headers, **params):
+            return c.get("/api/patients", params=params, headers=headers).json()
+
+        (seen,) = find(expert, q="Toshmatov Sardor")
+        (veiled,) = find(nurse, q="Toshmatov Sardor")
+        assert [m["code"] for m in seen["marks"]] == ["oiv"] and seen["marks"][0]["secret"]
+        assert [m["code"] for m in veiled["marks"]] == ["maxfiy"] and "OIV" not in json.dumps(veiled, ensure_ascii=False)
+        pid = seen["id"]
+        assert c.get(f"/api/patients/{pid}", headers=expert).json()["icd10"] == "B20"
+        hidden = c.get(f"/api/patients/{pid}", headers=nurse).json()
+        assert hidden["icd10"] is None and hidden["diagnosis"] is None and [m["code"] for m in hidden["marks"]] == ["maxfiy"]
+        assert any(x["id"] == pid for x in find(expert, group="oiv")) and not any(x["id"] == pid for x in find(nurse, group="oiv"))
+        assert any(x["id"] == pid for x in find(nurse, group="any"))  # that there is follow-up is no secret to staff
+        (open_one,) = find(nurse, q="Rahimov Botir")  # a group that is not confidential is shown to everyone
+        assert [m["code"] for m in open_one["marks"]] == ["gipertoniya"]
+
+        (call,) = c.post("/api/calls/round", json={"scenario": "dispanser", "test": True}).json()["calls"]
+        assert call["patient"]["name"] == "Toshmatov Sardor"
+        info = c.get(f"/api/call/{call['token']}").json()
+        said = json.dumps(info, ensure_ascii=False)
+        assert info["verify_year"] and "Men Sardor Toshmatov bilan gaplashyapmanmi?" in info["hello"] and info["intro"].startswith("Rahmat, Sardor aka.")
+        assert not any(word in said for word in ("OIV", "ВИЧ", "infeksiya", "B20"))  # nothing in the call names the disease
+        # ...and nothing in it is about somebody else's life: he is invited to ask about treatment, not about babies
+        invite = info["say"][info["ask_key"]]
+        assert info["ask_key"] == "ask_q_dispanser" and "dorilar" in invite and not any(word in invite for word in ("chaqaloq", "bola", "emlash", "homilador"))
+        assert c.get(f"/api/patients/{pid}", headers=expert).json()["scenarios"] == ["dispanser"]  # the only call that may be made to him
+        for wrong in ("chaqaloq_30kun", "emlash", "homilador", "homilador_ahvol", "chiqarishdan_keyin"):
+            assert c.post(f"/api/patients/{pid}/calls", json={"scenario": wrong}).status_code == 409
+        (mum,) = find(expert, q="Sodiqova Dilnoza")
+        assert c.get(f"/api/patients/{mum['id']}").json()["scenarios"] == ["homilador", "homilador_ahvol"]
+        assert c.post(f"/api/patients/{mum['id']}/calls", json={"scenario": "dispanser"}).status_code == 409
+
+        def key(**data):
+            return c.post(f"/api/call/{call['token']}/identity", data=data).json()["value"]
+
+        def row():
+            return next(x for x in c.get("/api/calls").json() if x["id"] == call["id"])
+
+        assert key(value="yes") == "yes" and key(qid="yil", value="1985") == "no"  # the name is not enough
+        assert row()["attempts"] == 1 and row()["status"] == "jarayonda" and row()["answers"]["shaxs"]["value"] == "no"
+        assert key(qid="yil", value="bilmayman") == "unclear" and key(qid="yil", value="1990") == "yes"
+        for q in info["questions"]:
+            c.post(f"/api/call/{call['token']}/answer", data={"qid": q["id"], "value": "yes" if q["id"] == "dori" else "no"})
+        res = c.post(f"/api/call/{call['token']}/finish").json()
+        assert not res["alert"] and res["flags"] == ["dori"] and res["zone"] == "yellow"
+        heard = [n for n in c.get("/api/dashboard", headers=nurse).json()["notices"] if n["patient_id"] == pid]
+        assert heard and not any(word in n["uz"] + n["ru"] for n in heard for word in ("OIV", "ВИЧ", "B20"))
+        r = c.post(
+            f"/api/call/{c.post(f'/api/patients/{pid}/calls', json={'scenario': 'dispanser'}).json()['token']}/ask",
+            data={"text": "Dorini qachon ichish kerak?"},
+        )
+        assert r.json()["kind"] == "doctor"  # no model at hand: the question goes to a person
+        assert talk.notes("dispanser") and all("dispanser" in n["who"] for n in talk.notes("dispanser"))
+
+        # a first-time mother is offered the leaflet's main points without asking; others are not
+        def tips(name, scenario):
+            (k,) = c.post("/api/calls/round", json={"scenario": scenario, "test": True}).json()["calls"]
+            assert name in (None, k["patient"]["name"])
+            return c.get(f"/api/call/{k['token']}").json()["tips"]
+
+        baby, expecting = tips("Valiyeva Madina", "chiqarishdan_keyin"), tips("Sodiqova Dilnoza", "homilador_ahvol")
+        assert baby["offer"] == "tips_q_baby" and len(baby["texts"]) == 4 and expecting["offer"] == "tips_q_preg" and len(expecting["texts"]) == 3
+        assert tips(None, "emlash") is None and tips("Toshmatov Sardor", "dispanser") is None  # the offer is for calls about mother and baby
+
+
 def test_frontend_script_is_complete():
     """Every screen the router opens, and the helpers they share, must be defined in the bundle."""
     import pathlib
@@ -743,6 +1001,24 @@ def test_frontend_script_is_complete():
     js = pathlib.Path("web/app.js").read_text(encoding="utf-8")
     # A screen redraws itself, so its refresh timer must be replaced, never added: timers that pile up double
     # the requests on every tick (a tab left open took the site down this way).
-    assert "S.timers.push" not in js and js.count("refreshEvery(") == 5
+    assert "S.timers.push" not in js and js.count("refreshEvery(") == 6
     defined = set(re.findall(r"(?:function|const) (\w+)", js))
-    assert {"home", "patient", "tasks", "calls", "voice", "about", "profile", "showLogin", "showCall", "taskRow", "callRow", "flagLabel", "obsText"} <= defined
+    assert {
+        "home",
+        "patient",
+        "tasks",
+        "calls",
+        "voice",
+        "about",
+        "profile",
+        "showLogin",
+        "showCall",
+        "taskRow",
+        "callRow",
+        "flagLabel",
+        "obsText",
+        "dmedPage",
+        "dmedEvent",
+        "marksOf",
+        "stayRow",
+    } <= defined

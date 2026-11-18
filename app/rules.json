@@ -10,7 +10,7 @@
   "newborn_temp": {"red_from": 37.5, "red_below": 35.5},
   "newborn_breath": {"red_from": 60},
   "silent_days": {"yellow": 7, "red": 14},
-  "red_complaints": ["qon_ketish", "tutqanoq", "homila_qimirlamaydi", "emmayapti", "tez_nafas", "kokrak_tortilishi", "harakatsiz", "sariqlik", "hushdan_ketish"],
+  "red_complaints": ["qon_ketish", "tutqanoq", "homila_qimirlamaydi", "emmayapti", "tez_nafas", "kokrak_tortilishi", "harakatsiz", "sariqlik", "hushdan_ketish", "kokrak_ogrigi", "nafas_qisishi", "emlash_reaksiya", "xavf_belgisi"],
   "yellow_complaints": ["shish", "holsizlik", "kuchli_bosh_ogrigi", "korish_buzilishi", "isitma", "yotal", "qorin_ogrigi", "kongil_aynishi"],
   "bp_red_with": ["kuchli_bosh_ogrigi", "korish_buzilishi"]
 }

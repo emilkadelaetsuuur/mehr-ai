@@ -1,0 +1,68 @@
+{
+ "title": {
+  "uz": "Emlash: taqvim bo'yicha nazorat",
+  "ru": "Прививки: контроль по календарю"
+ },
+ "who": "emlash",
+ "basis": "Profilaktik emlashlar milliy taqvimi (app/vaccines.json); taqvimni SSV buyrug'i bo'yicha shifokor tasdiqlaydi",
+ "greeting": {
+  "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. Shu emlashlar haqida bir nechta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам несколько коротких вопросов об этих прививках. Отвечайте «да» или «нет»."
+ },
+ "intro": {
+  "uz": "Shu emlashlar haqida bir nechta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Задам несколько коротких вопросов об этих прививках. Отвечайте «да» или «нет»."
+ },
+ "questions": [
+  {
+   "id": "emlandi",
+   "uz": "Shu emlashlar qilindimi?",
+   "ru": "Эти прививки уже сделаны?",
+   "type": "yesno",
+   "flag_if": "no",
+   "extra": "emlanmagan"
+  },
+  {
+   "id": "reaksiya",
+   "uz": "Emlashdan keyin bolada yuqori isitma, tutqanoq yoki kuchli shish bo'ldimi?",
+   "ru": "Были ли у ребёнка после прививки высокая температура, судороги или сильный отёк?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "complaint": "emlash_reaksiya",
+   "if": {
+    "emlandi": "yes"
+   }
+  },
+  {
+   "id": "kasal",
+   "uz": "Bola hozir kasalmi yoki shifokor emlashni keyinga qoldirganmi?",
+   "ru": "Ребёнок сейчас болеет или врач отложил прививку?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "extra": "emlash_kechiktirilgan",
+   "if": {
+    "emlandi": "no"
+   }
+  },
+  {
+   "id": "keladi",
+   "uz": "Shu hafta ichida bolani poliklinikaga emlashga olib kela olasizmi?",
+   "ru": "Сможете ли вы на этой неделе привести ребёнка в поликлинику на прививку?",
+   "type": "yesno",
+   "flag_if": "no",
+   "extra": "emlashga_kelolmaydi",
+   "if": {
+    "emlandi": "no"
+   }
+  }
+ ],
+ "closing_ok": {
+  "uz": "Rahmat! Javoblaringiz poliklinikaga yetkazildi. Emlash bolangizni og'ir kasalliklardan himoya qiladi. Sog' bo'ling!",
+  "ru": "Спасибо! Ваши ответы переданы в поликлинику. Прививки защищают ребёнка от тяжёлых болезней. Будьте здоровы!"
+ },
+ "closing_alert": {
+  "uz": "Aytganlaringiz xavotirli. Iltimos, hoziroq bir yuz uch raqamiga qo'ng'iroq qiling. Shifokoringizga shoshilinch xabar yuborildi.",
+  "ru": "То, что вы рассказали, тревожно. Пожалуйста, сейчас же позвоните по номеру сто три. Вашему врачу отправлено срочное сообщение."
+ },
+ "id": "emlash"
+}

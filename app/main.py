@@ -11,14 +11,15 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, closing, config, core, dialogue, ml, seed, telegram, voicelab
+from . import auth, closing, config, core, dialogue, dmed, ml, seed, telegram, voicelab
+from .api import dmed as dmed_api
 from .api import line, patients, public, system, tel, voice, work
 from .db import Patient, SessionLocal, init_db
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("nigoh")
 WEB = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
-OPEN_PATHS = ("/api/login", "/api/logout", "/api/health", "/api/call/", "/api/tel/", "/api/gateway/", "/api/qr", "/api/meta")
+OPEN_PATHS = ("/api/login", "/api/logout", "/api/health", "/api/call/", "/api/tel/", "/api/gateway/", "/api/dmed/fhir", "/api/qr", "/api/meta")
 _stop = threading.Event()
 
 
@@ -88,6 +89,7 @@ def warm_speech():
 
 @asynccontextmanager
 async def lifespan(_app):
+    _stop.clear()  # a second start in the same process (the tests) gets its background workers too
     init_db()
     with SessionLocal() as db:
         auth.ensure_users(db)
@@ -98,6 +100,7 @@ async def lifespan(_app):
     threading.Thread(target=warm_speech, daemon=True).start()
     threading.Thread(target=scheduler, daemon=True).start()
     threading.Thread(target=telegram.poll, args=(_stop,), daemon=True).start()
+    threading.Thread(target=dmed.sender, args=(_stop,), daemon=True).start()
     yield
     _stop.set()
 
@@ -122,7 +125,7 @@ async def session_guard(request: Request, call_next):
     return resp
 
 
-for module in (system, patients, work, voice, public, tel, line):
+for module in (system, patients, work, voice, public, tel, line, dmed_api):
     app.include_router(module.router)
 
 

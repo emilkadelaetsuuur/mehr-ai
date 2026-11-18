@@ -1,0 +1,62 @@
+{
+ "title": {
+  "uz": "Shifoxonadan keyin: nafas yo'llari",
+  "ru": "После больницы: органы дыхания"
+ },
+ "who": "shifoxona",
+ "basis": "DMED tashxisi J00–J99 (nafas a'zolari kasalliklari) bo'yicha chiqarilgan bemorni kuzatish; savollarni shifokor tasdiqlaydi",
+ "icd": [
+  "J00-J99"
+ ],
+ "greeting": {
+  "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. Shifoxonadan keyingi ahvolingiz haqida to'rtta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам четыре коротких вопроса о самочувствии после больницы. Отвечайте «да» или «нет»."
+ },
+ "intro": {
+  "uz": "Shifoxonadan keyingi ahvolingiz haqida to'rtta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Задам четыре коротких вопроса о самочувствии после больницы. Отвечайте «да» или «нет»."
+ },
+ "questions": [
+  {
+   "id": "isitma",
+   "uz": "Tana haroratingiz ko'tarildimi?",
+   "ru": "Поднималась ли у вас температура?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "complaint": "isitma"
+  },
+  {
+   "id": "nafas",
+   "uz": "Nafas olish qiyinlashdimi yoki hansirash bormi?",
+   "ru": "Стало ли труднее дышать, есть ли одышка?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "complaint": "nafas_qisishi"
+  },
+  {
+   "id": "yotal",
+   "uz": "Yo'talingiz kuchaydimi?",
+   "ru": "Усилился ли кашель?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "complaint": "yotal"
+  },
+  {
+   "id": "dori",
+   "uz": "Shifokor yozgan dorilarni ichmay qo'ygan kunlaringiz bo'ldimi?",
+   "ru": "Были ли дни, когда вы не принимали назначенные врачом лекарства?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "extra": "dori"
+  }
+ ],
+ "closing_ok": {
+  "uz": "Rahmat! Javoblaringiz shifokoringizga yetkazildi. Sog' bo'ling!",
+  "ru": "Спасибо! Ваши ответы переданы врачу. Будьте здоровы!"
+ },
+ "closing_alert": {
+  "uz": "Javoblaringizda xavotirli belgilar bor. Iltimos, hoziroq bir yuz uch raqamiga qo'ng'iroq qiling. Shifokoringizga shoshilinch xabar yuborildi.",
+  "ru": "В ваших ответах есть тревожные признаки. Пожалуйста, сейчас же позвоните по номеру сто три. Вашему врачу отправлено срочное сообщение."
+ },
+ "id": "chiqarish_nafas"
+}

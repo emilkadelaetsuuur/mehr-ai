@@ -94,6 +94,8 @@ def brief(call, res):
     ]
     for q in sc["questions"]:
         a = (call.answers or {}).get(q["id"]) or {}
+        if q.get("if") and not a:
+            continue  # a question that follows from another answer and was not asked
         said = a.get("value")
         said = ANSWER.get(said, f"{said}") if not isinstance(said, (int, float)) else f"{said:g}"
         heard = f' (her words: "{a["transcript"]}")' if a.get("transcript") and "tugma" not in a["transcript"] else ""

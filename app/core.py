@@ -6,13 +6,15 @@ import secrets
 from datetime import datetime, timedelta
 
 from sqlalchemy import func
-from sqlalchemy.orm import joinedload
+from sqlalchemy.orm import joinedload, selectinload
 
-from . import config, dialogue, extract, rules, telegram
-from .db import AuditLog, Call, Notice, Observation, Patient, RiskEvent, SessionLocal, Task
+from . import config, dialogue, dmed, extract, rules, telegram, vaccines
+from .db import AuditLog, Call, Hospitalization, Notice, Observation, Patient, RiskEvent, SessionLocal, Task
 from .schemas import Vitals
 
 HERE = os.path.dirname(__file__)
+with open(os.path.join(HERE, "groups.json"), encoding="utf-8") as fh:
+    GROUPS = {k: v for k, v in json.load(fh).items() if not k.startswith("_")}  # dispensary groups; some are confidential
 SCENARIOS = {}
 for _f in sorted(os.listdir(os.path.join(HERE, "scenarios"))):
     if _f.endswith(".json"):
@@ -21,6 +23,7 @@ for _f in sorted(os.listdir(os.path.join(HERE, "scenarios"))):
             SCENARIOS[_s["id"]] = _s
 
 NUM = ["bp_sys", "bp_dia", "hb", "glucose", "temp", "pulse", "breath"]
+WATCHED = ("homilador", "tuqqan", "chaqaloq")  # under close watch: a week without contact is itself a warning
 ZONE_UZ = {"red": "QIZIL", "yellow": "SARIQ", "green": "YASHIL"}
 ZONE_RU = {"red": "КРАСНАЯ", "yellow": "ЖЁЛТАЯ", "green": "ЗЕЛЁНАЯ"}
 TASK_UZ = {
@@ -29,6 +32,7 @@ TASK_UZ = {
     "hamshira_tashrif": "Hamshira tashrifi",
     "murojaat": "Bemor murojaati",
     "qayta_qongiroq": "Qayta qo'ng'iroq",
+    "emlash": "Emlashga chaqirish",
 }
 TASK_RU = {
     "faol_chaqiruv": "Активный вызов",
@@ -36,6 +40,7 @@ TASK_RU = {
     "hamshira_tashrif": "Визит медсестры",
     "murojaat": "Обращение пациента",
     "qayta_qongiroq": "Перезвонить пациенту",
+    "emlash": "Пригласить на прививку",
 }
 
 
@@ -82,13 +87,14 @@ def open_task(db, patient, type_, role, reason, hours):
     t = Task(patient_id=patient.id, type=type_, role=role, reason=reason[:240], due_at=now() + timedelta(hours=hours), created_at=now())
     db.add(t)
     patient.tasks.append(t)
+    dmed.push(db, "Task: vazifa", patient, dmed.task(t, patient, TASK_UZ.get(type_, type_)), f"{TASK_UZ.get(type_, type_)} -> {role}")
     return t
 
 
 def recompute(db, patient):
     """Re-evaluate the zone from all data; on a change, log it, notify and open a task."""
     data, prev, quotes = merged(patient)
-    silent = rules.days_between(patient.last_contact_at)
+    silent = rules.days_between(patient.last_contact_at) if patient.kind in WATCHED else 0
     zone, reasons = rules.evaluate(patient.kind, data, quotes, prev, days_silent=silent)
     old = patient.zone or "green"
     if old == "red" and zone != "red" and any(t.type == "mutaxassis" and t.status == "ochiq" for t in patient.tasks):
@@ -141,12 +147,17 @@ def add_observation(db, patient, source, data, quotes=None, text="", author="", 
     patient.observations.append(o)
     if contact:
         patient.last_contact_at = now()
+    measured = dmed.observations(patient, data or {}, o.created_at, author) if source in ("ovoz", "korik", "tahlil") else None
+    if measured:  # what a nurse dictated or a laboratory sent is in DMED at once: nobody types it there again
+        dmed.push(db, "Observation: o'lchovlar", patient, measured, f"{source}: {', '.join(k for k in NUM if (data or {}).get(k) is not None)}")
     return recompute(db, patient)
 
 
-def create_call(db, patient, scenario, task_id=None, planned_at=None):
+def create_call(db, patient, scenario, task_id=None, planned_at=None, context=None):
     if not patient.consent_at:
         raise ConsentRequired(patient.full_name)
+    if context is None:
+        context = call_context(patient, scenario)
     c = Call(
         token=secrets.token_urlsafe(9),
         patient_id=patient.id,
@@ -157,6 +168,7 @@ def create_call(db, patient, scenario, task_id=None, planned_at=None):
         created_at=now(),
         answers={},
         flags=[],
+        context=context or {},
     )
     db.add(c)
     patient.calls.append(c)
@@ -164,21 +176,71 @@ def create_call(db, patient, scenario, task_id=None, planned_at=None):
 
 
 UNFINISHED = ("rejalashtirilgan", "jarayonda")
-# the prepared patient for a trial call of each kind of scenario
-TRIAL = {"homilador": "Sodiqova Dilnoza", "tuqqan": "Valiyeva Madina", "chaqaloq": "Valiyev Amir", "any": "Valiyeva Madina"}
+KINDS = ("homilador", "tuqqan", "chaqaloq", "bola", "boshqa")
+# the prepared patient for a trial call, by whom the scenario is written for
+TRIAL = {
+    "homilador": "Sodiqova Dilnoza",
+    "tuqqan": "Valiyeva Madina",
+    "chaqaloq": "Valiyev Amir",
+    "emlash": "Karimov Yusuf",
+    "dispanser": "Toshmatov Sardor",
+    "shifoxona": "Rahimov Botir",
+    "any": "Valiyeva Madina",
+}
 
 
-def audience(db, scenario, zone=""):
-    """Who a calling round with this scenario can reach. A scenario is written for one kind of patient; AI
-    calls need consent; and a patient who already has an unfinished call of this scenario is not rung twice.
-    The most worrying zone and the longest silence come first."""
+def fits(patient, scenario):
+    """True when a scenario is written for this patient. A call about a baby is never made to a patient
+    under dispensary follow-up, nor a call about treatment to the mother of a healthy child: each scenario
+    reaches only the people it was written for."""
+    who = SCENARIOS[scenario].get("who", "any")
+    if who in KINDS:
+        return patient.kind == who
+    if who == "emlash":
+        return patient.kind in vaccines.CHILD and bool(vaccines.owed(patient, now()))
+    if who == "dispanser":
+        return bool(patient.groups)
+    if who == "shifoxona":
+        return patient.discharged_at is not None
+    return True
+
+
+def reachable(db, scenario, zone=""):
+    """The patients a scenario is written for. Besides the kinds of patient, a scenario may be for children
+    whose vaccination has come due ("emlash"), for everyone under dispensary follow-up ("dispanser"), or for
+    those discharged from a hospital in the last month ("shifoxona")."""
     who = SCENARIOS[scenario].get("who", "any")
     q = db.query(Patient)
-    if who != "any":
+    if who in KINDS:
         q = q.filter(Patient.kind == who)
+    elif who == "emlash":
+        q = q.filter(Patient.kind.in_(vaccines.CHILD)).options(selectinload(Patient.vaccinations))
+    elif who == "shifoxona":
+        q = q.filter(Patient.discharged_at >= now() - timedelta(days=30))
     if zone:
         q = q.filter(Patient.zone == zone)
     rows = q.all()
+    if who == "emlash":
+        rows = [p for p in rows if vaccines.owed(p, now())]
+    elif who == "dispanser":
+        rows = [p for p in rows if p.groups]
+    return rows
+
+
+def call_context(patient, scenario):
+    """What a call must know besides its scenario: which vaccinations are due, which hospital stay it follows."""
+    who = SCENARIOS[scenario].get("who", "any")
+    if who == "emlash":
+        return vaccines.owed(patient, now())
+    stay = max(patient.stays, key=lambda x: x.admitted_at or x.created_at, default=None) if who in ("shifoxona", "tuqqan") else None
+    return {"hospital": stay.hospital, "icd10": stay.icd10, "diagnosis": stay.diagnosis} if stay and stay.discharged_at else {}
+
+
+def audience(db, scenario, zone=""):
+    """Who a calling round with this scenario can reach. AI calls need consent, and a patient who already
+    has an unfinished call of this scenario is not rung twice. The most worrying zone and the longest
+    silence come first."""
+    rows = reachable(db, scenario, zone)
     busy = {pid for (pid,) in db.query(Call.patient_id).filter(Call.scenario == scenario, Call.status.in_(UNFINISHED))}
     fit = [p for p in rows if p.consent_at and p.id not in busy]
     fit.sort(key=lambda p: (-rules.ORDER.get(p.zone or "green", 0), p.last_contact_at or now()))
@@ -191,7 +253,7 @@ def start_round(db, scenario, lang=None, zone="", limit=10):
     for p in audience(db, scenario, zone)["fit"][:limit]:
         if lang:
             p.lang = lang
-        made.append(create_call(db, p, scenario))
+        made.append(create_call(db, p, scenario, context=call_context(p, scenario)))
     return made
 
 
@@ -199,34 +261,48 @@ def trial_call(db, scenario, lang=None):
     """One call to try a scenario on the prepared demonstration patient. An unfinished call of the same
     scenario is used again, so that trying it several times does not pile calls up."""
     who = SCENARIOS[scenario].get("who", "any")
+    fit = audience(db, scenario)["fit"]
     p = db.query(Patient).filter(Patient.full_name == TRIAL.get(who, TRIAL["any"]), Patient.consent_at.isnot(None)).first()
-    if not p:
-        fit = audience(db, scenario)["fit"]
-        p = fit[0] if fit else None
+    c = next((c for c in sorted(p.calls, key=lambda c: c.id, reverse=True) if c.scenario == scenario and c.status in UNFINISHED), None) if p else None
+    if c:
+        c.lang = lang or p.lang or "uz"
+        return c
+    if p and who == "emlash" and not vaccines.owed(p, now()):
+        p = None  # the prepared child is up to date by now: any child whose vaccination is due will do
+    p = p or (fit[0] if fit else None)
     if not p:
         return None
     if lang:
         p.lang = lang
-    c = next((c for c in sorted(p.calls, key=lambda c: c.id, reverse=True) if c.scenario == scenario and c.status in UNFINISHED), None)
-    if c:
-        c.lang = p.lang or "uz"
-        return c
-    return create_call(db, p, scenario)
+    return create_call(db, p, scenario, context=call_context(p, scenario))
 
 
-def discharge(db, patient, note=""):
-    """Hospital discharge of a high-risk patient -> 'Faol chaqiruv' for the family doctor + planned AI calls."""
-    patient.discharged_at = now()
+def after_hospital(patient, icd10=""):
+    """Which questions the call after a discharge asks: the scenario written for the diagnosis DMED sent,
+    else the one for a woman after childbirth or pregnancy, else the general one."""
+    if patient.kind == "chaqaloq":
+        return "chaqaloq_30kun"
+    for sc in SCENARIOS.values():
+        if sc.get("icd") and dmed.in_icd(icd10, sc["icd"]):
+            return sc["id"]
+    return "chiqarishdan_keyin" if patient.kind in ("homilador", "tuqqan") else "chiqarish_umumiy"
+
+
+def discharge(db, patient, note="", stay=None):
+    """Discharge from a hospital -> 'Faol chaqiruv' for the family doctor + an AI call the next day, with the
+    questions that fit the diagnosis. `stay` is the hospital stay DMED reported, when the news came from there."""
+    patient.discharged_at = (stay.discharged_at if stay else None) or now()
+    about = ": " + note if note else ""
     t = open_task(db, patient, "faol_chaqiruv", "shifokor", "Shifoxonadan chiqarildi" + (": " + note if note else ""), config.ACTIVE_CALL_HOURS)
     notify(
         db,
         patient,
         "shifokor",
         "yellow",
-        f"FAOL CHAQIRUV: {patient.full_name} ({patient.mahalla}) shifoxonadan chiqarildi. {config.ACTIVE_CALL_HOURS} soat ichida ko'rib, tasdiqlang.",
-        f"АКТИВНЫЙ ВЫЗОВ: {patient.full_name} ({patient.mahalla}) выписана. Осмотрите и подтвердите в течение {config.ACTIVE_CALL_HOURS} часов.",
+        f"FAOL CHAQIRUV: {patient.full_name} ({patient.mahalla}) shifoxonadan chiqarildi{about}. {config.ACTIVE_CALL_HOURS} soat ichida ko'rib, tasdiqlang.",
+        f"АКТИВНЫЙ ВЫЗОВ: {patient.full_name} ({patient.mahalla}) выписана{about}. Осмотрите и подтвердите в течение {config.ACTIVE_CALL_HOURS} часов.",
     )
-    scenario = "chaqaloq_30kun" if patient.kind == "chaqaloq" else "chiqarishdan_keyin"
+    scenario = after_hospital(patient, stay.icd10 if stay else "")
     planned = any(c.scenario == scenario and c.status == "rejalashtirilgan" for c in patient.calls)
     if not patient.consent_at or planned:  # no consent -> no calls; a repeated discharge does not double the schedule
         return t
@@ -237,8 +313,51 @@ def discharge(db, patient, note=""):
             if when > now() - timedelta(days=1):
                 create_call(db, patient, "chaqaloq_30kun", planned_at=when)
     else:
-        create_call(db, patient, "chiqarishdan_keyin", planned_at=now() + timedelta(days=1))
+        context = {"hospital": stay.hospital, "icd10": stay.icd10, "diagnosis": stay.diagnosis} if stay else {}
+        create_call(db, patient, scenario, planned_at=now() + timedelta(days=1), context=context)
     return t
+
+
+def local(d):
+    """A stored (UTC) time as people in Tashkent read it."""
+    return (d + timedelta(hours=5)).strftime("%d.%m %H:%M") if d else "—"
+
+
+def admitted(db, patient, stay):
+    """DMED reported that the patient is in a hospital. The person she is attached to learns it at once:
+    who, when, where, why and who brought her. Nobody has to phone the polyclinic."""
+    role, _ = responsible(patient)
+    head_uz, head_ru = ("SHOSHILINCH YOTQIZILDI", "ЭКСТРЕННАЯ ГОСПИТАЛИЗАЦИЯ") if stay.emergency else ("SHIFOXONAGA YOTQIZILDI", "ГОСПИТАЛИЗАЦИЯ")
+    by_uz = f" Olib bordi: {stay.brought_by}." if stay.brought_by else ""
+    by_ru = f" Доставил: {stay.brought_by}." if stay.brought_by else ""
+    notify(
+        db,
+        patient,
+        role,
+        "red" if stay.emergency else "yellow",
+        f"{head_uz}: {patient.full_name} ({patient.mahalla}), {local(stay.admitted_at)} — {stay.hospital}. Sabab: {stay.reason or '—'}.{by_uz}",
+        f"{head_ru}: {patient.full_name} ({patient.mahalla}), {local(stay.admitted_at)} — {stay.hospital}. Причина: {stay.reason or '—'}.{by_ru}",
+    )
+    audit(db, "dmed", "hospital_admitted", patient, f"{stay.hospital}: {stay.reason or ''}")
+
+
+def discharged(db, patient, stay):
+    """DMED reported the discharge with the diagnosis. The diagnosis goes on the card as the hospital wrote
+    it, a diagnosis of a dispensary group puts the patient in that group, the family doctor gets the active
+    call, and an AI call with the questions for this diagnosis is planned for the next day."""
+    if stay.icd10:
+        patient.icd10 = stay.icd10
+        added = [g for g, spec in GROUPS.items() if dmed.in_icd(stay.icd10, spec["icd"]) and g not in (patient.groups or [])]
+        if added:
+            patient.groups = (patient.groups or []) + added
+    if stay.diagnosis:
+        patient.diagnosis = f"{stay.diagnosis} ({stay.hospital})"[:240]
+    secret = any(GROUPS[g]["secret"] for g in patient.groups or [] if g in GROUPS)
+    # a confidential diagnosis is not put into a notice
+    note = stay.hospital if secret else f"{stay.hospital}, {stay.diagnosis or stay.reason or 'tashxis ko`rsatilmagan'}"
+    task = discharge(db, patient, note, stay)
+    audit(db, "dmed", "hospital_discharged", patient, f"{stay.hospital}: {stay.icd10 or ''} -> {after_hospital(patient, stay.icd10)}")
+    return task
 
 
 def task_done(db, task, note=""):
@@ -290,6 +409,7 @@ def appeal(db, call, text):
     )
     db.add(t)
     p.tasks.append(t)
+    dmed.push(db, "Task: bemor murojaati", p, dmed.task(t, p, TASK_UZ["murojaat"]), f"murojaat -> {role}")
     notify(
         db,
         p,
@@ -407,6 +527,11 @@ def finish_call(db, call):
         + (["murojaat"] if note else [])
         + (["operator"] if (call.answers or {}).get("operator") else [])
     )
+    if call.scenario == "emlash":
+        # A missed vaccination is shown by the calendar and gives the nurse her own task; it is not a sign of
+        # illness, so it does not move the child's zone. A bad reaction is a complaint and does.
+        vaccination_answers(db, call)
+        extra = [x for x in extra if x == "unclear"]
     if call.scenario == "tashrif_tasdiq":
         t = db.get(Task, call.task_id) if call.task_id else None
         if t and verified is not None:
@@ -454,7 +579,44 @@ def finish_call(db, call):
             )
             if own == "red":
                 open_task(db, p, "mutaxassis", "mutaxassis", uz, config.ACTIVE_CALL_HOURS)
+    # DMED has the call the moment it ends: the answers, and a flag on the record when they are alarming.
+    dmed.push(db, "QuestionnaireResponse: qo'ng'iroq", p, dmed.answers(call, sc), f"{sc['title']['uz']}: {', '.join(call.flags) or 'belgi yo`q'}")
+    if alert:
+        signs = ", ".join(rules.COMPLAINTS[c][0] for c in complaints if c in rules.COMPLAINTS) or "xavf belgilari"
+        dmed.push(db, "Flag: xavf belgisi", p, dmed.flag(p, f"AI qo'ng'iroqda xavf belgilari: {signs}", call.finished_at), signs)
     return {"zone": zone, "flags": call.flags, "alert": alert, "verified": verified}
+
+
+def vaccination_answers(db, call):
+    """What follows from a call about vaccinations that have come due. "Done" is written down as the
+    parent's word and waits for the vaccination room's record; "not done" gives the patronage nurse a task
+    to bring the child in, and a deferral for a medical reason goes to the family doctor to decide."""
+    p, doses = call.patient, (call.context or {}).get("doses") or []
+    said = {k: (v or {}).get("value") for k, v in (call.answers or {}).items()}
+    if said.get("emlandi") == "yes":
+        for code in vaccines.record(db, p, doses, "ota-ona", now(), confirmed=False):
+            dmed.push(db, "Immunization: ota-ona so'zi", p, dmed.immunization(p, code, now(), reported=True), vaccines.DOSES[code]["short"])
+        return
+    if said.get("emlandi") != "no":
+        return
+    names = ", ".join(vaccines.DOSES[c]["short"] for c in doses if c in vaccines.DOSES)
+    why = (
+        "ota-ona kela olmaydi"
+        if said.get("keladi") == "no"
+        else "bola kasal yoki emlash kechiktirilgan"
+        if said.get("kasal") == "yes"
+        else "ota-ona kelishga rozi"
+    )
+    open_task(db, p, "emlash", "hamshira", f"{names}: emlanmagan ({why})", 72)
+    if said.get("kasal") == "yes":
+        notify(
+            db,
+            p,
+            "shifokor",
+            "yellow",
+            f"EMLASH KECHIKTIRILGAN: {p.full_name} ({p.mahalla}) — {names}. Ota-ona: bola kasal yoki shifokor kechiktirgan. Qaror kerak.",
+            f"ПРИВИВКА ОТЛОЖЕНА: {p.full_name} ({p.mahalla}) — {names}. Со слов родителя: ребёнок болеет или врач отложил. Нужно решение.",
+        )
 
 
 def call_no_answer(db, call):
@@ -497,7 +659,7 @@ def sweep(db):
             f"ПРОСРОЧКА: {p.full_name} — «{TASK_RU.get(t.type, t.type)}» не выполнен в срок.",
         )
     limit = now() - timedelta(days=rules.T["silent_days"]["yellow"])
-    for p in db.query(Patient).filter(Patient.last_contact_at < limit, Patient.zone != "red").limit(200).all():
+    for p in db.query(Patient).filter(Patient.kind.in_(WATCHED), Patient.last_contact_at < limit, Patient.zone != "red").limit(200).all():
         recompute(db, p)
     db.commit()
 
@@ -510,6 +672,7 @@ def summary(p, lang="uz"):
         "homilador": ("Homilador", "Беременная"),
         "tuqqan": ("Tuqqan ayol", "Родильница"),
         "chaqaloq": ("Chaqaloq", "Новорождённый"),
+        "bola": ("Bola", "Ребёнок"),
         "boshqa": ("Bemor", "Пациент"),
     }.get(p.kind, ("Bemor", "Пациент"))[0 if uz else 1]
     lines = [
@@ -570,7 +733,7 @@ def dashboard(db):
     tasks = db.query(Task).options(joinedload(Task.patient)).all()
     closed = [t for t in tasks if t.status != "ochiq" and t.done_at]
     open_ = [t for t in tasks if t.status == "ochiq"]
-    silent = db.query(func.count(Patient.id)).filter(Patient.last_contact_at < now() - timedelta(days=config.SILENT_DAYS)).scalar()
+    silent = db.query(func.count(Patient.id)).filter(Patient.kind.in_(WATCHED), Patient.last_contact_at < now() - timedelta(days=config.SILENT_DAYS)).scalar()
     # complaint clusters by mahalla in the last 7 days: an early, anonymised signal for the epidemiologist
     cl = {}
     week = db.query(Observation).options(joinedload(Observation.patient)).filter(Observation.created_at >= now() - timedelta(days=7))
@@ -581,6 +744,7 @@ def dashboard(db):
         ({"mahalla": m, "count": len(ids), "zone": "red" if len(ids) >= 8 else "yellow" if len(ids) >= 4 else "green"} for m, ids in cl.items()),
         key=lambda x: -x["count"],
     )[:8]
+    children = db.query(Patient).filter(Patient.kind.in_(vaccines.CHILD)).options(selectinload(Patient.vaccinations)).all()
     return {
         "district": config.DISTRICT,
         "zones": {z: zones.get(z, 0) for z in ("red", "yellow", "green")},
@@ -596,6 +760,10 @@ def dashboard(db):
         "no_consent": db.query(func.count(Patient.id)).filter(Patient.consent_at.is_(None)).scalar(),
         "clusters": clusters,
         "doctors": doctor_stats(tasks),
+        "in_hospital": db.query(func.count(Hospitalization.id)).filter(Hospitalization.discharged_at.is_(None)).scalar(),
+        "vaccines": vaccines.coverage(children, now()),
+        "dispensary": sum(1 for (g,) in db.query(Patient.groups).filter(Patient.groups.isnot(None)) if g),
+        "kinds": dict(db.query(Patient.kind, func.count(Patient.id)).group_by(Patient.kind).all()),
     }
 
 

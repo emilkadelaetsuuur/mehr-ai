@@ -4,7 +4,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-Kind = Literal["homilador", "tuqqan", "chaqaloq", "boshqa"]
+Kind = Literal["homilador", "tuqqan", "chaqaloq", "bola", "boshqa"]
 
 
 class LoginIn(BaseModel):
@@ -51,6 +51,8 @@ class CardFields(Vitals):
     phone: str | None = Field(None, max_length=40)
     doctor: str | None = Field(None, max_length=120)
     diagnosis: str | None = Field(None, max_length=240)
+    pinfl: str | None = Field(None, max_length=14)
+    parity: int | None = Field(None, ge=0, le=20)
     referral: str | None = Field(None, max_length=120)
     complaints: list[str] = []
 
@@ -88,6 +90,20 @@ class RoundIn(BaseModel):
     zone: Literal["", "red", "yellow", "green"] = ""
     limit: int = Field(10, ge=1, le=50)
     test: bool = False  # one trial call instead of a round
+
+
+class DmedEventIn(BaseModel):
+    """An event for the stand-in of DMED to send: an admission, a discharge, or a vaccination that was given."""
+
+    patient_id: int
+    event: Literal["admit", "discharge", "vaccine"]
+    hospital: str = Field("", max_length=160)
+    emergency: bool = True
+    brought_by: str = Field("", max_length=80)
+    reason: str = Field("", max_length=240)
+    icd10: str = Field("", max_length=12)
+    diagnosis: str = Field("", max_length=240)
+    advice: str = Field("", max_length=2000)
 
 
 class LabImportIn(BaseModel):

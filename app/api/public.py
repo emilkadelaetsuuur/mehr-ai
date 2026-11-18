@@ -38,6 +38,7 @@ def info(token: str, db=Depends(db_session)):
     c = get_call(db, token)
     sc, lang = core.SCENARIOS[c.scenario], c.lang or "uz"
     hello, intro = talk.opening(db, c)
+    tip = talk.tips(db, c)
     return {
         "status": c.status,
         "lang": lang,
@@ -46,7 +47,11 @@ def info(token: str, db=Depends(db_session)):
         "hello": hello,  # who is calling, and "am I speaking with ...?"
         "intro": intro,  # after her "yes": thanks by name, what the call is about
         "max_questions": talk.MAX_QUESTIONS,
-        "questions": [{"id": q["id"], "text": q[lang], "type": q["type"]} for q in sc["questions"]],
+        "ask_key": talk.ask_key(c),  # the invitation to ask her own questions, worded for whom the call is for
+        # `if`: a question asked only after a certain answer to an earlier one
+        "questions": [{"id": q["id"], "text": q[lang], "type": q["type"], "if": q.get("if")} for q in sc["questions"]],
+        "verify_year": talk.needs_year(c),  # a second key after the name, for calls that must reach nobody else
+        "tips": ({"offer": tip[0], "texts": tip[1]} if tip else None),  # for a first-time mother
         "closing_ok": sc["closing_ok"][lang],
         "closing_alert": sc["closing_alert"][lang],
         # spoken while the closing is being written; absent when the fixed phrase is used and nothing has to be waited for
@@ -74,6 +79,9 @@ def audio(token: str, part: str, i: int | None = None, n: int | None = None, db=
         text = c.closing
     elif part in ("hello", "intro"):
         text = talk.opening(db, c)[part == "intro"]
+    elif part == "tip":
+        texts = (talk.tips(db, c) or (None, []))[1]
+        text = texts[i] if i is not None and 0 <= i < len(texts) else None
     elif part == "reply":
         items = ((c.answers or {}).get("suhbat") or {}).get("items") or []
         parts = closing.sentences(items[n].get("a")) if n is not None and 0 <= n < len(items) else []
@@ -127,13 +135,29 @@ async def answer(token: str, qid: str = Form(...), value: str = Form(""), audio:
 
 
 @router.post("/{token}/identity")
-async def identity(token: str, value: str = Form(""), audio: UploadFile = File(None), db=Depends(db_session)):
-    """Her answer to "am I speaking with ...?". Only a "yes" lets the call go on. After a "no" nothing about
-    health is said: the call ends, stays planned and counts as an attempt."""
+async def identity(token: str, qid: str = Form("shaxs"), value: str = Form(""), audio: UploadFile = File(None), db=Depends(db_session)):
+    """Her answer to "am I speaking with ...?" (and, with qid "yil", her year of birth in a call that needs
+    the second key). Only a "yes" lets the call go on. After a "no" nothing about health is said: the call
+    ends, stays planned and counts as an attempt."""
     c = get_call(db, token)
     if c.status in ("tugadi", "javobsiz"):
         raise HTTPException(400, "call")
     lang = c.lang or "uz"
+    if qid == "yil":
+        said = value.strip()[:40]
+        if audio is not None:
+            raw = await audio.read()
+            if len(raw) > MAX_ANSWER:
+                raise HTTPException(400, "audio size")
+            res = await run_in_threadpool(voicelab.stt, raw, audio.filename or "a.webm", audio.content_type or "audio/webm", lang) if len(raw) > 800 else None
+            said = ((res or {}).get("text") or "").strip()[:80]
+        val = await run_in_threadpool(talk.year_matches, said, c.patient.birth_year or 0)
+        if val == "yes":
+            c.answers = {**(c.answers or {}), "yil": {"value": "yes", "transcript": "tug'ilgan yili mos keldi"}}
+        elif val == "no":
+            core.wrong_person(db, c, "tug'ilgan yili mos kelmadi")
+        db.commit()
+        return {"qid": "yil", "value": val, "transcript": "", "flagged": False, "operator": False}  # the year itself is not echoed back
     transcript, val = "", "unclear"
     if audio is not None:
         raw = await audio.read()
@@ -189,7 +213,7 @@ async def ask(token: str, text: str = Form(""), audio: UploadFile = File(None), 
         return {"kind": quick, "transcript": said}
     found = extract.signs(said, quick=True)
     urgent = any(x in rules.T["red_complaints"] for x in found)
-    words, by, used = (None, None, []) if urgent else await run_in_threadpool(talk.compose, c.patient.kind, lang, said)
+    words, by, used = (None, None, []) if urgent else await run_in_threadpool(talk.compose, talk.topic(c), lang, said)
     # Her doctor hears about it whenever she named a complaint or the machine had no answer for her.
     passed = core.appeal(db, c, said) if found or not words else None
     kind = "alarm" if urgent else "answer" if words else "doctor"
@@ -213,9 +237,11 @@ async def ask(token: str, text: str = Form(""), audio: UploadFile = File(None), 
 
 
 @router.post("/{token}/hear")
-async def hear(token: str, audio: UploadFile = File(...), db=Depends(db_session)):
-    """A spoken yes or no to a question that is not part of the scenario (the offer to leave a message). Nothing is stored."""
+async def hear(token: str, value: str = Form(""), audio: UploadFile = File(None), db=Depends(db_session)):
+    """A yes or no, spoken or tapped, to a question that is not part of the scenario (the offer of advice). Nothing is stored."""
     c = get_call(db, token)
+    if audio is None:
+        return {"value": value if value in ("yes", "no") else "unclear", "transcript": "", "operator": False}
     raw = await audio.read()
     if len(raw) > MAX_ANSWER:
         raise HTTPException(400, "audio size")

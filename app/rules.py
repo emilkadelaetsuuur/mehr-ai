@@ -34,6 +34,15 @@ COMPLAINTS = {
     "kokrak_tortilishi": ("Ko'krak qafasi tortilishi", "Втяжение грудной клетки", ["ko'krak qafasi tortil", "втяжен"]),
     "harakatsiz": ("Harakatsiz, lanj", "Вялый, не двигается", ["lanj", "harakatsiz", "bo'shashgan", "вял", "не двига"]),
     "sariqlik": ("Sariqlik", "Желтуха", ["sarg'ay", "sariq", "желту", "пожелт"]),
+    "kokrak_ogrigi": (
+        "Ko'krakda og'riq",
+        "Боль в груди",
+        ["ko'krak og'ri", "ko'kragim og'ri", "ko'krakda og'riq", "yuragim og'ri", "yurak og'ri", "боль в груди", "болит в груди", "болит сердце"],
+    ),
+    "nafas_qisishi": ("Nafas qisishi", "Одышка", ["nafas qis", "nafasim qis", "nafas yetishma", "одышк", "задыха", "не хватает воздуха"]),
+    # named only by a call's own question: one question covers several signs, so there are no keywords
+    "emlash_reaksiya": ("Emlashdan keyingi og'ir reaksiya", "Тяжёлая реакция после прививки", []),
+    "xavf_belgisi": ("Xavf belgisi (bemor so'zi)", "Тревожный признак (со слов пациентки)", []),
 }
 
 LABELS = {
@@ -53,6 +62,14 @@ LABELS = {
     "ahvol": ("Ahvoli yomonlashgan", "Состояние ухудшилось"),
     "dori": ("Dorilarni qabul qilmayapti", "Не принимает лекарства"),
     "fikr": ("Tushuntirish tushunarsiz bo'lgan", "Объяснения врача были непонятны"),
+    "emlanmagan": ("Emlash o'tkazib yuborilgan", "Прививка пропущена"),
+    "emlash_kechiktirilgan": ("Emlash kechiktirilgan: shifokor qarori kerak", "Прививка отложена: нужно решение врача"),
+    "emlashga_kelolmaydi": ("Emlashga kela olmaydi", "Не может прийти на прививку"),
+    "korik": ("Rejali ko'rikni o'tkazib yuborgan", "Пропущен плановый осмотр"),
+    "nojoya": ("Dorilardan keyin noxush holat", "Недомогание после лекарств"),
+    "uyqu": ("Uyqu yoki ishtaha buzilgan", "Нарушен сон или аппетит"),
+    "ruhiy": ("Xavotir yoki tushkun kayfiyat", "Тревога или подавленное настроение"),
+    "ogriq": ("Kuchli og'riq", "Сильная боль"),
 }
 
 

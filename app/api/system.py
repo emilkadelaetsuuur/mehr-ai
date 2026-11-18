@@ -11,10 +11,10 @@ import qrcode.image.svg
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import event
 
-from .. import auth, closing, config, core, ml, rules, seed, simline, telegram, telephony, voicelab
-from ..db import AuditLog, Notice, Patient, SessionLocal, User
+from .. import auth, closing, config, core, dmed, ml, rules, seed, simline, telegram, telephony, vaccines, voicelab
+from ..db import AuditLog, Hospitalization, Notice, Patient, SessionLocal, User
 from ..schemas import LabImportIn, LoginIn, PasswordIn
-from .deps import brief, current_user, db_session, iso, require, snapshot
+from .deps import brief, current_user, db_session, iso, masked, require, snapshot
 
 router = APIRouter(prefix="/api")
 log = logging.getLogger("nigoh.auth")
@@ -106,8 +106,13 @@ def meta(db=Depends(db_session)):
         "rules": rules.T,
         "complaints": {k: {"uz": v[0], "ru": v[1]} for k, v in rules.COMPLAINTS.items()},
         "scenarios": [
-            {"id": s["id"], "title": s["title"], "basis": s["basis"], "questions": len(s["questions"]), "who": s["who"]} for s in core.SCENARIOS.values()
+            {"id": s["id"], "title": s["title"], "basis": s["basis"], "questions": len(s["questions"]), "who": s["who"], "private": bool(s.get("private"))}
+            for s in core.SCENARIOS.values()
         ],
+        "flags": {k: {"uz": v[0], "ru": v[1]} for k, v in rules.LABELS.items()},  # what a call may mark besides complaints
+        "groups": {k: {"uz": v["uz"], "ru": v["ru"], "secret": v["secret"]} for k, v in core.GROUPS.items()},
+        "vaccines": {"ages": {k: v["label"] for k, v in vaccines.AGES.items()}, "note": vaccines.CALENDAR["note"]},
+        "dmed": {"mode": dmed.mode(), "address": config.DMED_BASE_URL or None},
         "eval": ev,
         "hours": config.ACTIVE_CALL_HOURS,
         "accounts": [{"username": x.username, "name": x.full_name, "role": x.role} for x in db.query(User).order_by(User.id)],
@@ -127,11 +132,29 @@ def dashboard(db=Depends(db_session), u=Depends(current_user)):
             {"id": n.id, "level": n.level, "role": n.role, "uz": n.text_uz, "ru": n.text_ru, "at": iso(n.created_at), "patient_id": n.patient_id}
             for n in q.order_by(Notice.id.desc()).limit(25)
         ]
-        names = ("Sodiqova Dilnoza", "Valiyeva Madina", "Valiyev Amir")
-        d["demo"] = [brief(p) for n in names for p in db.query(Patient).filter(Patient.full_name == n).limit(1)]
+        names = ("Sodiqova Dilnoza", "Valiyeva Madina", "Valiyev Amir", "Karimov Yusuf", "Rahimov Botir", "Toshmatov Sardor")
+        d["demo"] = [brief(p, u) for n in names for p in db.query(Patient).filter(Patient.full_name == n).limit(1)]
+        # What DMED reported from hospitals: a family doctor sees own patients, the others see the district.
+        stays = db.query(Hospitalization).order_by(Hospitalization.id.desc()).limit(60).all()
+        mine = [s for s in stays if s.patient and (u.role != "shifokor" or not u.doctor_name or s.patient.doctor == u.doctor_name)][:12]
+        d["stays"] = [
+            {
+                "id": s.id,
+                "patient": {"id": s.patient.id, "name": s.patient.full_name, "mahalla": s.patient.mahalla, "doctor": s.patient.doctor},
+                "hospital": s.hospital,
+                "emergency": s.emergency,
+                "brought_by": s.brought_by,
+                "reason": None if masked(s.patient, u) else s.reason,
+                "icd10": None if masked(s.patient, u) else s.icd10,
+                "diagnosis": None if masked(s.patient, u) else s.diagnosis,
+                "admitted_at": iso(s.admitted_at),
+                "discharged_at": iso(s.discharged_at),
+            }
+            for s in mine
+        ]
         return d
 
-    return snapshot(("dashboard", u.role), build)
+    return snapshot(("dashboard", u.role, u.doctor_name), build)
 
 
 @router.get("/audit")

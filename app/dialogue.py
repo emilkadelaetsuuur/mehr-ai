@@ -22,17 +22,56 @@ SAY = {
         "Keyinroq qayta qo'ng'iroq qilamiz. Sog' bo'ling!",
         "ru": "Понятно, извините за беспокойство. Пожалуйста, передайте ей, что звонили из поликлиники. Мы перезвоним позже. Всего доброго!",
     },
+    # a call about dispensary follow-up asks a second key after the name; a wrong one ends the call
+    "who_year": {"uz": "Rahmat. Xavfsizlik uchun tug'ilgan yilingizni ayting.", "ru": "Спасибо. Для безопасности назовите, пожалуйста, год вашего рождения."},
+    "who_year_no": {
+        "uz": "Kechirasiz, ma'lumot mos kelmadi, shuning uchun suhbatni to'xtataman. Poliklinikaga o'zingiz murojaat qilishingiz mumkin. Sog' bo'ling!",
+        "ru": "Простите, данные не совпали, поэтому я завершаю разговор. Вы можете сами обратиться в поликлинику. Всего доброго!",
+    },
+    # the offer to a first-time mother: a few words from the leaflet without being asked
+    "tips_q_baby": {
+        "uz": "Bu sizning birinchi farzandingiz. Chaqaloq parvarishi bo'yicha eng muhim maslahatlarni qisqacha aytib beraymi?",
+        "ru": "Это ваш первый ребёнок. Рассказать коротко самое важное об уходе за малышом?",
+    },
+    "tips_q_preg": {
+        "uz": "Bu sizning birinchi homiladorligingiz. Nimalarga e'tibor berish kerakligini qisqacha aytib beraymi?",
+        "ru": "Это ваша первая беременность. Рассказать коротко, на что важно обращать внимание?",
+    },
     "who_fail": {
         "uz": "Kechirasiz, sizni eshita olmadim. Keyinroq qayta qo'ng'iroq qilaman. Sog' bo'ling!",
         "ru": "Простите, я вас не слышу. Перезвоню позже. Всего доброго!",
     },
     # Her own questions, after the scenario's. An answer comes from the leaflet (app/advice.json) and is worded
     # for this call; these are the fixed phrases around it.
+    # The invitation names only what concerns the person called: nobody under dispensary follow-up is asked
+    # about babies, no parent of a healthy child about treatment (app/talk.py picks the one that fits).
     "ask_q": {
-        "uz": "Endi sizni tinglayman. Sog'lig'ingiz, ovqatlanish yoki chaqaloq parvarishi haqida savolingiz bormi? "
+        "uz": "Endi sizni tinglayman. Sog'lig'ingiz yoki davolanishingiz haqida savolingiz bormi? "
         "Yoki shifokoringizga aytmoqchi bo'lgan gapingiz bo'lsa, ayting. Bo'lmasa, «yo'q» deng.",
-        "ru": "Теперь я слушаю вас. Есть ли у вас вопрос о самочувствии, питании или уходе за ребёнком? "
+        "ru": "Теперь я слушаю вас. Есть ли у вас вопрос о самочувствии или лечении? Или скажите, что передать вашему врачу. Если вопросов нет, скажите «нет».",
+    },
+    "ask_q_homilador": {
+        "uz": "Endi sizni tinglayman. Homiladorlik, ovqatlanish yoki o'zingizni qanday his qilayotganingiz haqida savolingiz bormi? "
+        "Yoki shifokoringizga aytmoqchi bo'lgan gapingiz bo'lsa, ayting. Bo'lmasa, «yo'q» deng.",
+        "ru": "Теперь я слушаю вас. Есть ли у вас вопрос о беременности, питании или самочувствии? "
         "Или скажите, что передать вашему врачу. Если вопросов нет, скажите «нет».",
+    },
+    "ask_q_ona": {
+        "uz": "Endi sizni tinglayman. O'z sog'lig'ingiz yoki chaqaloq parvarishi haqida savolingiz bormi? "
+        "Yoki shifokoringizga aytmoqchi bo'lgan gapingiz bo'lsa, ayting. Bo'lmasa, «yo'q» deng.",
+        "ru": "Теперь я слушаю вас. Есть ли у вас вопрос о вашем самочувствии или уходе за малышом? "
+        "Или скажите, что передать вашему врачу. Если вопросов нет, скажите «нет».",
+    },
+    "ask_q_bola": {
+        "uz": "Endi sizni tinglayman. Emlash yoki bolangizning sog'lig'i haqida savolingiz bormi? "
+        "Yoki shifokoringizga aytmoqchi bo'lgan gapingiz bo'lsa, ayting. Bo'lmasa, «yo'q» deng.",
+        "ru": "Теперь я слушаю вас. Есть ли у вас вопрос о прививках или здоровье ребёнка? "
+        "Или скажите, что передать вашему врачу. Если вопросов нет, скажите «нет».",
+    },
+    "ask_q_dispanser": {
+        "uz": "Endi sizni tinglayman. Davolanish yoki dorilar haqida savolingiz bormi? "
+        "Yoki shifokoringizga aytmoqchi bo'lgan gapingiz bo'lsa, ayting. Bo'lmasa, «yo'q» deng.",
+        "ru": "Теперь я слушаю вас. Есть ли у вас вопрос о лечении или лекарствах? Или скажите, что передать вашему врачу. Если вопросов нет, скажите «нет».",
     },
     "ask_more": {"uz": "Yana savolingiz bormi?", "ru": "Есть ли у вас ещё вопросы?"},
     "ask_go": {"uz": "Marhamat, savolingizni ayting.", "ru": "Пожалуйста, говорите, я слушаю."},

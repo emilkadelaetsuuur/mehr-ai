@@ -3,19 +3,34 @@
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy.orm import selectinload
 
-from .. import config, core, fhir, ml, pdfgen, rules
-from ..db import AuditLog, Patient
+from .. import config, core, fhir, ml, pdfgen, rules, vaccines
+from ..db import AuditLog, DmedMessage, Hospitalization, Patient
 from ..schemas import CallIn, ConfirmIn, NoteIn, ObservationIn
-from .deps import brief, call_json, current_user, db_session, get_patient, iso, snapshot, task_json
+from .deps import brief, call_json, current_user, db_session, get_patient, iso, masked, sees_all, snapshot, task_json
 
 router = APIRouter(prefix="/api/patients")
 
 
 @router.get("")
-def list_patients(zone: str = "", q: str = "", kind: str = "", silent: int = 0, limit: int = 400, db=Depends(db_session)):
+def list_patients(
+    zone: str = "",
+    q: str = "",
+    kind: str = "",
+    silent: int = 0,
+    group: str = "",
+    vax: int = 0,
+    hospital: int = 0,
+    limit: int = 400,
+    db=Depends(db_session),
+    u=Depends(current_user),
+):
+    """The register. `group`: a dispensary group, or "any" for everyone under dispensary follow-up;
+    `vax`: children whose vaccination is due or overdue; `hospital`: those in a hospital now."""
+
     def build():
-        qs = db.query(Patient)
+        qs = db.query(Patient).options(selectinload(Patient.vaccinations))
         if zone:
             qs = qs.filter(Patient.zone == zone)
         if kind:
@@ -23,12 +38,25 @@ def list_patients(zone: str = "", q: str = "", kind: str = "", silent: int = 0, 
         if q:
             qs = qs.filter(Patient.full_name.ilike(f"%{q}%"))
         if silent:
-            qs = qs.filter(Patient.last_contact_at < core.now() - timedelta(days=config.SILENT_DAYS))
+            qs = qs.filter(Patient.kind.in_(core.WATCHED), Patient.last_contact_at < core.now() - timedelta(days=config.SILENT_DAYS))
         rows = qs.all()
+        inside = {pid for (pid,) in db.query(Hospitalization.patient_id).filter(Hospitalization.discharged_at.is_(None))}
+        behind = {p.id: vaccines.owed(p, core.now()) for p in rows if p.kind in vaccines.CHILD}
+        if group == "any":
+            rows = [p for p in rows if p.groups]
+        elif group:  # a confidential group is a filter only for those who may see it
+            rows = [p for p in rows if group in (p.groups or []) and (not core.GROUPS.get(group, {}).get("secret") or sees_all(u, p))]
+        if vax:
+            rows = [p for p in rows if behind.get(p.id)]
+        if hospital:
+            rows = [p for p in rows if p.id in inside]
         rows.sort(key=lambda p: (-rules.ORDER.get(p.zone or "green", 0), p.last_contact_at or core.now()))
-        return [brief(p) for p in rows[:limit]]
+        return [
+            {**brief(p, u), "in_hospital": p.id in inside, "vax": ("overdue" if behind[p.id]["overdue"] else "due") if behind.get(p.id) else None}
+            for p in rows[:limit]
+        ]
 
-    return snapshot(("patients", zone, q, kind, silent, limit), build)
+    return snapshot(("patients", zone, q, kind, silent, group, vax, hospital, limit, u.role, u.doctor_name), build)
 
 
 @router.post("/confirm")
@@ -46,7 +74,7 @@ def confirm(body: ConfirmIn, db=Depends(db_session), u=Depends(current_user)):
         p = Patient(full_name=f.full_name.strip(), kind=f.kind or "boshqa", zone="green", created_at=core.now(), last_contact_at=core.now())
         db.add(p)
         db.flush()
-    for k in ("birth_year", "weeks", "mahalla", "phone", "diagnosis", "kind", "doctor"):
+    for k in ("birth_year", "weeks", "mahalla", "phone", "diagnosis", "kind", "doctor", "pinfl", "parity"):
         if getattr(f, k) not in (None, ""):
             setattr(p, k, getattr(f, k))
     if body.consent and not p.consent_at:
@@ -62,16 +90,42 @@ def confirm(body: ConfirmIn, db=Depends(db_session), u=Depends(current_user)):
 
 
 @router.get("/{pid}")
-def patient_card(pid: int, db=Depends(db_session)):
+def patient_card(pid: int, db=Depends(db_session), u=Depends(current_user)):
     p = get_patient(db, pid)
+    hide = masked(p, u)  # a confidential diagnosis is for the specialist, the head and her own doctor only
+    ages = vaccines.AGES
     data, prev, _ = core.merged(p)
     age = (core.now().year - p.birth_year) if p.birth_year and p.kind != "chaqaloq" else None
     mother = db.get(Patient, p.mother_id) if p.mother_id else None
     kids = db.query(Patient).filter(Patient.mother_id == p.id).all()
     return {
-        **brief(p),
+        **brief(p, u),
         "reasons": p.reasons or [],
-        "diagnosis": p.diagnosis,
+        "diagnosis": None if hide else p.diagnosis,
+        "icd10": None if hide else p.icd10,
+        "pinfl": p.pinfl,
+        "parity": p.parity,
+        "scenarios": [s for s in core.SCENARIOS if s != "tashrif_tasdiq" and core.fits(p, s)],  # the calls that may be made to this patient
+        "stays": [
+            {
+                "id": s.id,
+                "hospital": s.hospital,
+                "emergency": s.emergency,
+                "brought_by": s.brought_by,
+                "reason": None if hide else s.reason,
+                "icd10": None if hide else s.icd10,
+                "diagnosis": None if hide else s.diagnosis,
+                "advice": None if hide else s.advice,
+                "admitted_at": iso(s.admitted_at),
+                "discharged_at": iso(s.discharged_at),
+            }
+            for s in sorted(p.stays, key=lambda s: s.admitted_at or s.created_at, reverse=True)
+        ],
+        "vaccines": [{**d, "due_at": iso(d["due_at"]), "done_at": iso(d["done_at"]), "label": ages[d["age"]]["label"]} for d in vaccines.plan(p, core.now())],
+        "dmed": [
+            {"direction": m.direction, "kind": m.kind, "summary": m.summary, "status": m.status, "at": iso(m.created_at)}
+            for m in db.query(DmedMessage).filter(DmedMessage.patient_id == p.id).order_by(DmedMessage.id.desc()).limit(12)
+        ],
         "discharged_at": iso(p.discharged_at),
         "values": data,
         "prev": prev,
@@ -132,6 +186,8 @@ def new_call(pid: int, body: CallIn, db=Depends(db_session), u=Depends(current_u
     p = get_patient(db, pid)
     if body.scenario not in core.SCENARIOS:
         raise HTTPException(400, "scenario")
+    if not core.fits(p, body.scenario):  # every scenario is for the people it was written for, and nobody else
+        raise HTTPException(409, "scenario does not fit this patient")
     if body.lang:
         p.lang = body.lang
     try:

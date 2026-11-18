@@ -1,0 +1,260 @@
+{
+ "note": "The national calendar of preventive vaccinations of Uzbekistan, as far as it could be checked against the WHO immunization data for Uzbekistan and the calendar the Ministry of Health published. Before real use it must be compared with the Ministry's current order; change this file, not the code. `uz` and `ru` are the names said aloud in a call.",
+ "grace_days": 30,
+ "ages": {
+  "tugilganda": {
+   "days": 0,
+   "uz": "tug'ilgandagi",
+   "ru": "при рождении",
+   "label": {
+    "uz": "Tug'ilganda",
+    "ru": "При рождении"
+   }
+  },
+  "2oy": {
+   "days": 61,
+   "uz": "ikki oylik",
+   "ru": "в два месяца",
+   "label": {
+    "uz": "2 oy",
+    "ru": "2 мес."
+   }
+  },
+  "3oy": {
+   "days": 91,
+   "uz": "uch oylik",
+   "ru": "в три месяца",
+   "label": {
+    "uz": "3 oy",
+    "ru": "3 мес."
+   }
+  },
+  "4oy": {
+   "days": 122,
+   "uz": "to'rt oylik",
+   "ru": "в четыре месяца",
+   "label": {
+    "uz": "4 oy",
+    "ru": "4 мес."
+   }
+  },
+  "12oy": {
+   "days": 365,
+   "uz": "bir yoshlik",
+   "ru": "в один год",
+   "label": {
+    "uz": "12 oy",
+    "ru": "12 мес."
+   }
+  },
+  "16oy": {
+   "days": 487,
+   "uz": "o'n olti oylik",
+   "ru": "в шестнадцать месяцев",
+   "label": {
+    "uz": "16 oy",
+    "ru": "16 мес."
+   }
+  },
+  "6yosh": {
+   "days": 2191,
+   "uz": "olti yoshlik",
+   "ru": "в шесть лет",
+   "label": {
+    "uz": "6 yosh",
+    "ru": "6 лет"
+   }
+  },
+  "7yosh": {
+   "days": 2557,
+   "uz": "yetti yoshlik",
+   "ru": "в семь лет",
+   "label": {
+    "uz": "7 yosh",
+    "ru": "7 лет"
+   }
+  },
+  "9yosh": {
+   "days": 3287,
+   "uz": "to'qqiz yoshlik",
+   "ru": "в девять лет",
+   "label": {
+    "uz": "9 yosh",
+    "ru": "9 лет"
+   }
+  },
+  "16yosh": {
+   "days": 5844,
+   "uz": "o'n olti yoshlik",
+   "ru": "в шестнадцать лет",
+   "label": {
+    "uz": "16 yosh",
+    "ru": "16 лет"
+   }
+  }
+ },
+ "doses": [
+  {
+   "id": "hepb0",
+   "age": "tugilganda",
+   "short": "VGB-1",
+   "uz": "gepatit B ga qarshi",
+   "ru": "от гепатита B"
+  },
+  {
+   "id": "bcg",
+   "age": "tugilganda",
+   "short": "BSJ",
+   "uz": "silga qarshi",
+   "ru": "от туберкулёза"
+  },
+  {
+   "id": "opv0",
+   "age": "tugilganda",
+   "short": "OPV-0",
+   "uz": "poliomiyelitga qarshi",
+   "ru": "от полиомиелита"
+  },
+  {
+   "id": "penta1",
+   "age": "2oy",
+   "short": "Penta-1",
+   "uz": "pentavalent",
+   "ru": "пентавалентная"
+  },
+  {
+   "id": "opv1",
+   "age": "2oy",
+   "short": "OPV-1",
+   "uz": "poliomiyelitga qarshi",
+   "ru": "от полиомиелита"
+  },
+  {
+   "id": "pcv1",
+   "age": "2oy",
+   "short": "PKV-1",
+   "uz": "pnevmokokkka qarshi",
+   "ru": "от пневмококка"
+  },
+  {
+   "id": "rota1",
+   "age": "2oy",
+   "short": "Rota-1",
+   "uz": "rotavirusga qarshi",
+   "ru": "от ротавируса"
+  },
+  {
+   "id": "penta2",
+   "age": "3oy",
+   "short": "Penta-2",
+   "uz": "pentavalent",
+   "ru": "пентавалентная"
+  },
+  {
+   "id": "opv2",
+   "age": "3oy",
+   "short": "OPV-2",
+   "uz": "poliomiyelitga qarshi",
+   "ru": "от полиомиелита"
+  },
+  {
+   "id": "pcv2",
+   "age": "3oy",
+   "short": "PKV-2",
+   "uz": "pnevmokokkka qarshi",
+   "ru": "от пневмококка"
+  },
+  {
+   "id": "rota2",
+   "age": "3oy",
+   "short": "Rota-2",
+   "uz": "rotavirusga qarshi",
+   "ru": "от ротавируса"
+  },
+  {
+   "id": "penta3",
+   "age": "4oy",
+   "short": "Penta-3",
+   "uz": "pentavalent",
+   "ru": "пентавалентная"
+  },
+  {
+   "id": "opv3",
+   "age": "4oy",
+   "short": "OPV-3",
+   "uz": "poliomiyelitga qarshi",
+   "ru": "от полиомиелита"
+  },
+  {
+   "id": "ipv",
+   "age": "4oy",
+   "short": "IPV",
+   "uz": "poliomiyelitga qarshi",
+   "ru": "от полиомиелита"
+  },
+  {
+   "id": "mmr1",
+   "age": "12oy",
+   "short": "QQP-1",
+   "uz": "qizamiq, qizilcha va tepkiga qarshi",
+   "ru": "от кори, краснухи и паротита"
+  },
+  {
+   "id": "pcv3",
+   "age": "12oy",
+   "short": "PKV-3",
+   "uz": "pnevmokokkka qarshi",
+   "ru": "от пневмококка"
+  },
+  {
+   "id": "dtp4",
+   "age": "16oy",
+   "short": "AKDS-4",
+   "uz": "bo'g'ma, ko'kyo'tal va qoqsholga qarshi",
+   "ru": "от дифтерии, коклюша и столбняка"
+  },
+  {
+   "id": "opv4",
+   "age": "16oy",
+   "short": "OPV-4",
+   "uz": "poliomiyelitga qarshi",
+   "ru": "от полиомиелита"
+  },
+  {
+   "id": "mmr2",
+   "age": "6yosh",
+   "short": "QQP-2",
+   "uz": "qizamiq, qizilcha va tepkiga qarshi",
+   "ru": "от кори, краснухи и паротита"
+  },
+  {
+   "id": "td7",
+   "age": "7yosh",
+   "short": "ADS-M",
+   "uz": "bo'g'ma va qoqsholga qarshi",
+   "ru": "от дифтерии и столбняка"
+  },
+  {
+   "id": "opv5",
+   "age": "7yosh",
+   "short": "OPV-5",
+   "uz": "poliomiyelitga qarshi",
+   "ru": "от полиомиелита"
+  },
+  {
+   "id": "hpv",
+   "age": "9yosh",
+   "short": "OPV (papilloma)",
+   "uz": "odam papillomasi virusiga qarshi",
+   "ru": "от вируса папилломы человека",
+   "who": "f"
+  },
+  {
+   "id": "td16",
+   "age": "16yosh",
+   "short": "ADS-M",
+   "uz": "bo'g'ma va qoqsholga qarshi",
+   "ru": "от дифтерии и столбняка"
+  }
+ ]
+}

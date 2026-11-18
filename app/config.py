@@ -44,3 +44,8 @@ CLAUDE_CLOSING = os.getenv("CLAUDE_CLOSING", "1").strip() != "0"
 CLAUDE_LANGS = [x.strip() for x in (os.getenv("CLAUDE_LANGS") or "uz,ru").split(",") if x.strip()]
 VOICELAB_CLOSING = os.getenv("VOICELAB_CLOSING", "1").strip() != "0"
 VOICELAB_CLOSING_TIMEOUT = float(os.getenv("VOICELAB_CLOSING_TIMEOUT") or "7")
+# DMED, the national digital health platform. Empty address: the stand-in inside this system ("sinov muhiti").
+DMED_BASE_URL = os.getenv("DMED_BASE_URL", "").strip().rstrip("/")  # the platform's FHIR address, e.g. its playground
+DMED_TOKEN = os.getenv("DMED_TOKEN", "").strip()  # access token of the client registered at the platform's sign-on server
+DMED_INBOUND_KEY = os.getenv("DMED_INBOUND_KEY", "").strip()  # what DMED must present when it sends events here
+DMED_PINFL_SYSTEM = os.getenv("DMED_PINFL_SYSTEM", "urn:uz:pinfl").strip()  # the identifier system for PINFL: take it from the platform's guide

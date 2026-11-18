@@ -39,6 +39,7 @@
       finish: "Tugatdim",
       type_here: "Savolingizni yoki shifokorga aytmoqchi bo'lgan gapingizni shu yerga yozing",
       src: "Manba",
+      tips_h: "Qisqa maslahatlar",
       to_doctor: "Oilaviy shifokoringizga yuborildi",
       to_nurse: "Patronaj hamshirasiga yuborildi",
     },
@@ -70,6 +71,7 @@
       finish: "Готово",
       type_here: "Напишите здесь ваш вопрос или то, что передать врачу",
       src: "Источник",
+      tips_h: "Короткие советы",
       to_doctor: "Передано вашему семейному врачу",
       to_nurse: "Передано патронажной медсестре",
     },
@@ -279,6 +281,28 @@
     return r;
   }
 
+  // A call that must reach nobody but the patient asks a second key after the name: the year of birth.
+  async function year() {
+    const q = { id: "yil", to: "identity", audio: "say_who_year", text: info.say.who_year, type: "number" };
+    let r = await ask(q, t.from);
+    if (!r.operator && r.value === "unclear") r = await ask(q, t.from);
+    return r;
+  }
+
+  // For a first-time mother: the leaflet's main points, offered once and read only if she wants them.
+  async function tips() {
+    const key = info.tips.offer;
+    const want = await ask({ id: "maslahat", to: "hear", audio: "say_" + key, text: info.say[key], type: "yesno" }, t.tips_h);
+    if (want.operator) return want;
+    if (want.value !== "yes") return;
+    const texts = info.tips.texts;
+    if (info.tts) texts.forEach((_, i) => fetch(src(`tip?i=${i}`)).catch(() => {}));
+    for (let i = 0; i < texts.length; i++) {
+      box.innerHTML = `<div><div class="ai-note">${t.tips_h} · ${i + 1} / ${texts.length}</div><div class="avatar ring">N</div></div><div class="qtext">${esc(texts[i])}</div><div class="ai-note">${t.ai}</div>`;
+      await play(`tip?i=${i}`, texts[i]);
+    }
+  }
+
   // Somebody else picked up, or nobody could be understood: a polite end, and the call is made again later.
   async function goodbye(key) {
     await Promise.all(pending);
@@ -292,7 +316,7 @@
   // does not answer goes to her doctor as a message; a warning sign raises the alarm. Up to three questions.
   // Resolves with {operator, said} if she asked for a person instead.
   async function talk() {
-    let key = "ask_q";
+    let key = info.ask_key || "ask_q"; // the invitation is worded for whom the call is for
     for (let asked = 0, misses = 0; asked < (info.max_questions || 3) && misses < 2; ) {
       const fd = new FormData();
       let pick = null,
@@ -411,14 +435,22 @@
     if (LINE) onLine(`spoken: greeting, it is her: ${who.operator ? "operator" : who.value}`);
     if (who.operator) return operator(who.said);
     if (who.value !== "yes") return goodbye(who.value === "no" ? "who_no" : "who_fail");
+    if (info.verify_year) {
+      const born = await year();
+      if (born.operator) return operator(born.said);
+      if (born.value !== "yes") return goodbye(born.value === "no" ? "who_year_no" : "who_fail");
+    }
     box.innerHTML = `<div><div class="avatar ring">N</div><h1>Nigoh</h1></div><div class="qtext">${esc(info.intro)}</div><div class="ai-note">${t.ai}</div>`;
     await play("intro", info.intro);
     await say("hint");
     let human = null,
-      acks = 0;
+      acks = 0,
+      asked = 0;
+    const got = {}; // what was understood so far: some questions are asked only after a certain answer
     for (let i = 0; i < info.questions.length; i++) {
-      const q = info.questions[i],
-        label = `${i + 1} / ${info.questions.length}`;
+      const q = info.questions[i];
+      if (q.if && Object.entries(q.if).some(([id, value]) => got[id] !== value)) continue;
+      const label = `${++asked}`;
       let r = await ask(q, label);
       if (!r.operator && r.voice && r.value === "unclear" && q.type !== "number") {
         await say("retry"); // one more try, like a person would ask again; then the call moves on
@@ -428,8 +460,10 @@
         human = r;
         break;
       }
+      got[q.id] = r.value;
       await say(r.flagged ? "ack_flag" : "ack" + (1 + (acks++ % 3))); // a short reaction before the next question
     }
+    if (!human && info.tips) human = (await tips()) || null;
     if (!human) human = (await talk()) || null;
     if (human) return operator(human.said);
     box.innerHTML = `<div><div class="avatar">N</div></div><div class="qtext">${t.proc}</div><div></div>`;

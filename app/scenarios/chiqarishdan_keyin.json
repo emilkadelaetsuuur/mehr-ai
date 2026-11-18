@@ -55,5 +55,8 @@
   "uz": "Javoblaringizda xavotirli belgilar bor. Iltimos, hoziroq bir yuz uch raqamiga qo'ng'iroq qiling. Shifokoringizga shoshilinch xabar yuborildi.",
   "ru": "В ваших ответах есть тревожные признаки. Пожалуйста, сейчас же позвоните по номеру сто три. Вашему врачу отправлено срочное сообщение."
  },
- "id": "chiqarishdan_keyin"
+ "id": "chiqarishdan_keyin",
+ "icd": [
+  "O00-O99"
+ ]
 }

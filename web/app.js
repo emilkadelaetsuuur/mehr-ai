@@ -5,7 +5,7 @@
     lang: localStorage.lang || "uz",
     role: localStorage.role || "rahbar",
     meta: null,
-    filter: { zone: "", kind: "", q: "", silent: 0 },
+    filter: { zone: "", kind: "", q: "", silent: 0, group: "", vax: 0, hospital: 0 },
     voice: null,
     timers: [],
   };
@@ -99,10 +99,26 @@
       m = Math.floor((a % 36e5) / 6e4);
     return `<span class="timer ${ms < 0 ? "late" : "ok"}">${h} ${t("hour")} ${m} ${t("min")} ${ms < 0 ? "— " + t("late") : t("left")}</span>`;
   }
+  const childAge = (p) => {
+    const d = Math.max(0, Math.floor((Date.now() - new Date(p.born_at)) / 864e5));
+    return d < 31 ? `${d} ${t("age_days")}` : d < 731 ? `${Math.floor(d / 30.44)} ${t("age_m")}` : `${Math.floor(d / 365.25)} ${t("age_y")}`;
+  };
   const kindLabel = (p) =>
     t(p.kind || "boshqa") +
     (p.kind === "homilador" && p.weeks ? `, ${p.weeks} ${t("weeks")}` : "") +
-    (p.kind === "chaqaloq" && p.born_at ? `, ${Math.max(0, Math.floor((Date.now() - new Date(p.born_at)) / 864e5))} ${t("age_days")}` : "");
+    ((p.kind === "chaqaloq" || p.kind === "bola") && p.born_at ? `, ${childAge(p)}` : "");
+  // The marks a patient carries: dispensary groups (a confidential one in red), a stay in a hospital,
+  // a vaccination that has come due. Which confidential group it is, the server tells only to those who may know.
+  const marksOf = (p) =>
+    (p.marks || []).map((m) => `<span class="badge mark ${m.secret ? "z-red" : "z-info"}">${esc(L(m))}</span>`).join("") +
+    (p.in_hospital ? `<span class="badge mark z-red">${t("b_hospital")}</span>` : "") +
+    (p.vax ? `<span class="badge mark ${p.vax === "overdue" ? "z-red" : "z-yellow"}">${t(p.vax === "overdue" ? "b_vax_over" : "b_vax_due")}</span>` : "");
+  const stayRow = (s, withP) =>
+    `<div><span class="badge ${s.discharged_at ? "z-green" : s.emergency ? "z-red" : "z-yellow"}">${t(s.discharged_at ? "stay_out" : s.emergency ? "stay_emerg" : "stay_plan")}</span>
+      ${withP ? `<a href="#/bemor/${s.patient.id}"><b>${esc(s.patient.name)}</b></a> · ` : ""}<b>${esc(s.hospital || "—")}</b>
+      <div class="small">${t("stay_since")}: ${dt(s.admitted_at)}${s.discharged_at ? ` · ${t("stay_until")}: ${dt(s.discharged_at)}` : ""}${s.brought_by ? ` · ${t("stay_by")}: ${esc(s.brought_by)}` : ""}</div>
+      ${s.reason ? `<div class="small">${t("stay_reason")}: ${esc(s.reason)}</div>` : ""}${s.diagnosis || s.icd10 ? `<div class="small">${t("stay_dx")}: <b>${esc([s.icd10, s.diagnosis].filter(Boolean).join(" · "))}</b></div>` : ""}
+      ${s.advice ? `<div class="quote">${esc(s.advice)}</div>` : ""}</div>`;
   const reasonText = (r) => (r ? `${esc(r[S.lang] || r.uz)} ${esc(r.value || "")}` : "—");
 
   /* ---------- shell ---------- */
@@ -116,7 +132,7 @@
     $("#top").innerHTML = `<a class="logo" href="#/"><span class="dots"><i></i><i></i><i></i></span>Nigoh</a>
       <span class="sub">${esc(S.meta?.district || "")}</span><span class="sp"></span>${who}<button id="lang">${S.lang === "uz" ? "RU" : "UZ"}</button>`;
     $("#nav").innerHTML =
-      tab("", "nav_home") + tab("ovoz", "nav_voice") + tab("vazifalar", "nav_tasks") + tab("qongiroqlar", "nav_calls") + tab("haqida", "nav_about");
+      tab("", "nav_home") + tab("ovoz", "nav_voice") + tab("vazifalar", "nav_tasks") + tab("qongiroqlar", "nav_calls") + (can.lab() ? tab("dmed", "nav_dmed") : "") + tab("haqida", "nav_about");
     if ($("#role"))
       $("#role").onchange = (e) => {
         S.role = localStorage.role = e.target.value;
@@ -226,25 +242,29 @@
         ${kpi("red", d.zones.red, t("red"), '{"zone":"red"}')}${kpi("yellow", d.zones.yellow, t("yellow"), '{"zone":"yellow"}')}${kpi("green", d.zones.green, t("green"), '{"zone":"green"}')}
         ${kpi("plain", d.closed_in_time_pct == null ? "—" : d.closed_in_time_pct + "%", t("k_intime"))}${kpi("", d.tasks_overdue, t("k_overdue"), '{"go":"vazifalar"}')}
         ${kpi("", d.silent, t("k_silent"), '{"silent":1}')}${kpi("plain", d.verified, t("k_verified"))}${kpi("plain", d.mismatch, t("k_mismatch"))}
+        ${kpi(d.in_hospital ? "red" : "", d.in_hospital, t("k_hospital"), '{"hospital":1}')}${kpi(d.vaccines.overdue ? "yellow" : "", d.vaccines.overdue + d.vaccines.due, t("k_vax"), '{"vax":1}')}
+        ${kpi("plain", d.vaccines.in_time_pct == null ? "—" : d.vaccines.in_time_pct + "%", t("k_vax_pct"))}${kpi("", d.dispensary, t("k_disp"), '{"group":"any"}')}
       </div>
       <div class="grid two">
         <div class="card"><div class="row-b"><h2>${t("patients")} · ${ps.length}</h2><span class="sp" style="flex:1"></span>
             <input id="q" type="text" placeholder="${t("search")}" value="${esc(f.q)}" style="max-width:200px">${can.lab() ? `<button class="btn sm ghost" id="lab">${t("lab_btn")}</button>` : ""}</div>
           <div class="chips">${chip("zone", "", t("all"))}${chip("zone", "red", t("zred"))}${chip("zone", "yellow", t("zyellow"))}${chip("zone", "green", t("zgreen"))}
-            <span style="width:8px"></span>${chip("kind", "homilador", t("homilador"))}${chip("kind", "tuqqan", t("tuqqan"))}${chip("kind", "chaqaloq", t("chaqaloq"))}
+            <span style="width:8px"></span>${chip("kind", "homilador", t("homilador"))}${chip("kind", "tuqqan", t("tuqqan"))}${chip("kind", "chaqaloq", t("chaqaloq"))}${chip("kind", "bola", t("bola"))}
+            <span style="width:8px"></span>${chip("group", "any", t("chip_disp"))}<span class="chip ${f.vax ? "on" : ""}" data-k="vax">${t("chip_vax")}</span><span class="chip ${f.hospital ? "on" : ""}" data-k="hospital">${t("chip_hosp")}</span>
             ${f.silent ? `<span class="chip on" data-k="silent" data-v="0">${t("k_silent")} ✕</span>` : ""}</div>
           <div class="tscroll"><table><thead><tr><th>${t("th_name")}</th><th>${t("th_zone")}</th><th>${t("th_why")}</th><th>${t("th_mahalla")}</th><th>${t("th_contact")}</th></tr></thead>
           <tbody>${
             ps
               .slice(0, 120)
               .map(
-                (p) => `<tr class="row" data-p="${p.id}"><td><b>${esc(p.name)}</b><div class="small">${kindLabel(p)}</div></td><td>${zb(p.zone)}</td>
+                (p) => `<tr class="row" data-p="${p.id}"><td><b>${esc(p.name)}</b><div class="small">${kindLabel(p)}</div>${marksOf(p)}</td><td>${zb(p.zone)}</td>
             <td>${reasonText(p.top)}</td><td>${esc(p.mahalla || "")}</td><td class="small">${ago(p.last_contact)}</td></tr>`,
               )
               .join("") || `<tr><td colspan="5" class="small">${t("empty")}</td></tr>`
           }</tbody></table></div></div>
         <div class="grid" style="align-content:start">
           ${d.demo?.length ? `<div class="card"><h2>${t("demo_h")}</h2>${d.demo.map((p, i) => `<div class="row-b" style="justify-content:space-between;padding:5px 0;cursor:pointer" data-p="${p.id}"><span><b>${esc(p.name)}</b><div class="small">${t("demo_" + i)}</div></span>${zb(p.zone)}</div>`).join("")}</div>` : ""}
+          ${d.stays?.length ? `<div class="card"><h2>${t("stays_h")}</h2><div class="feed">${d.stays.slice(0, 6).map((s) => stayRow(s, 1)).join("")}</div></div>` : ""}
           <div class="card"><h2>${t("notices")}</h2><div class="feed">${
             d.notices
               .slice(0, 9)
@@ -279,14 +299,15 @@
         k = e.target.closest("[data-f]"),
         p = e.target.closest("[data-p]");
       if (c) {
-        const v = c.dataset.v;
-        f[c.dataset.k] = c.dataset.k === "silent" ? 0 : f[c.dataset.k] === v ? "" : v;
+        const v = c.dataset.v,
+          k = c.dataset.k;
+        f[k] = ["silent", "vax", "hospital"].includes(k) ? (f[k] ? 0 : 1) : f[k] === v ? "" : v; // switches, and one-of-many choices
         home();
       } else if (k) {
         const o = JSON.parse(k.dataset.f);
         if (o.go) location.hash = "#/" + o.go;
         else {
-          Object.assign(f, { zone: "", silent: 0 }, o);
+          Object.assign(f, { zone: "", silent: 0, vax: 0, hospital: 0, group: "" }, o);
           home();
         }
       } else if (p) location.hash = "#/bemor/" + p.dataset.p;
@@ -301,7 +322,8 @@
       ? L(m)
       : { unclear: t("unclear"), tashrif_tasdiqlanmadi: t("s_nomuvofiq"), noanswer: t("c_javobsiz"), ahvol: t("f_ahvol"), dori: t("f_dori"), fikr: t("f_fikr"), murojaat: t("f_murojaat"), operator: t("f_operator") }[
           c
-        ] || c;
+        ] ||
+          (S.meta.flags?.[c] ? L(S.meta.flags[c]) : c);
   };
   const obsText = (d) => {
     const a = [];
@@ -405,14 +427,17 @@
     $("#app").innerHTML = `
       <div class="row-b mb"><a href="#/" class="small">← ${t("nav_home")}</a></div>
       <div class="card mb"><div class="row-b" style="justify-content:space-between"><h1>${esc(p.name)}</h1>${zb(p.zone)}</div>
+        ${marksOf({ ...p, in_hospital: p.stays.some((s) => !s.discharged_at) }) ? `<div class="mb">${marksOf({ ...p, in_hospital: p.stays.some((s) => !s.discharged_at) })}</div>` : ""}
         <div class="small">${kindLabel(p)}${p.birth_year && p.kind !== "chaqaloq" ? " · " + p.birth_year : ""} · ${esc(p.mahalla || "")} · ${esc(p.phone || "")} · ${t("doctor")}: ${esc(p.doctor || "—")} · ${t("th_contact")}: ${ago(p.last_contact)}</div>
         <div class="mt"><span class="badge ${p.consent ? "z-green" : "z-yellow"}">${t(p.consent ? "consent_yes" : "consent_no")}</span>${p.consent ? "" : ` <button class="btn sm ghost" id="bcons">${t("consent_btn")}</button>`}</div>
-        ${p.diagnosis ? `<div class="mt"><span class="small">${t("diagnosis")}:</span> ${esc(p.diagnosis)}</div>` : ""}
+        ${p.diagnosis || p.icd10 ? `<div class="mt"><span class="small">${t("diagnosis")}:</span> ${esc([p.icd10, p.diagnosis].filter(Boolean).join(" · "))}</div>` : ""}
+        ${(p.marks || []).some((m) => m.code === "maxfiy") ? `<div class="mt small">${t("secret_note")}</div>` : ""}
+        ${p.pinfl || p.parity === 0 ? `<div class="mt small">${p.pinfl ? "PINFL: " + esc(p.pinfl) : ""}${p.parity === 0 ? (p.pinfl ? " · " : "") + t("first_child") : ""}</div>` : ""}
         ${p.mother ? `<div class="mt small">${t("mother")}: <a href="#/bemor/${p.mother.id}">${esc(p.mother.name)}</a></div>` : ""}
         ${p.children.length ? `<div class="mt small">${t("children")}: ${p.children.map((k) => `<a href="#/bemor/${k.id}">${esc(k.name)}</a> ${zb(k.zone)}`).join(", ")}</div>` : ""}
         <div class="row-b mt"><button class="btn" id="bcall">${t("start_call")}</button><button class="btn ghost" id="bdis">${t("discharge")}</button>
           <a class="btn ghost" target="_blank" href="/api/patients/${p.id}/referral.pdf?lang=${S.lang}">${t("referral")}</a>
-          <a class="btn ghost" target="_blank" href="/api/patients/${p.id}/fhir">${t("fhir")}</a></div></div>
+          <a class="btn ghost" target="_blank" href="/api/patients/${p.id}/fhir">${t("fhir")}</a>${can.lab() ? `<button class="btn ghost" id="bdmed">${t("dmed_btn")}</button>` : ""}</div></div>
       <div class="grid two">
         <div class="grid" style="align-content:start">
           <div class="card"><h2>${t("why")}</h2>${p.reasons.map((r) => `<div class="reason ${r.zone}"><b>${reasonText(r)}</b> <span class="small">· ${t("rule")}: ${esc(r.rule)}</span>${r.quote ? `<div class="quote">${esc(r.quote)}</div>` : ""}</div>`).join("") || `<p>${t("why_none")}</p>`}
@@ -438,8 +463,24 @@
               .join("") || t("empty")
           }</div></div>
         </div>
-        <div class="grid" style="align-content:start"><div><h2>${t("tasks")}</h2>${p.tasks.map((x) => taskRow(x)).join("") || `<p class="small">${t("empty")}</p>`}</div>
+        <div class="grid" style="align-content:start">
+          ${p.stays.length ? `<div class="card"><h2>${t("stays_card")}</h2><div class="feed">${p.stays.map((s) => stayRow(s)).join("")}</div></div>` : ""}
+          ${
+            p.vaccines.length
+              ? `<div class="card"><h2>${t("vax_h")}</h2>${Object.entries(
+                  p.vaccines.reduce((a, d) => ((a[d.age] = a[d.age] || { label: d.label, doses: [] }).doses.push(d), a), {}),
+                )
+                  .map(
+                    ([, g]) =>
+                      `<div class="row-b" style="padding:3px 0"><span class="small" style="min-width:74px">${esc(L(g.label))}</span>${g.doses.map((d) => `<span class="vx ${d.state}" title="${t("vax_" + d.state)}${d.done_at ? " · " + dt(d.done_at) : ""}">${esc(d.short)}</span>`).join("")}</div>`,
+                  )
+                  .join("")}
+              <p class="small mt">${["done", "said", "due", "overdue", "later"].map((x) => `<span class="vx ${x}">${t("vax_" + x)}</span>`).join("")}</p><p class="small">${t("vax_note")}</p></div>`
+              : ""
+          }
+          <div><h2>${t("tasks")}</h2>${p.tasks.map((x) => taskRow(x)).join("") || `<p class="small">${t("empty")}</p>`}</div>
           <div><h2>${t("calls")}</h2>${p.calls.map((c) => callRow(c)).join("") || `<p class="small">${t("empty")}</p>`}</div>
+          ${p.dmed.length ? `<div class="card"><h2>${t("dmed_card")}</h2><div class="feed">${p.dmed.map((m) => `<div><span class="badge ${m.direction === "in" ? "z-info" : "z-gray"}">${m.direction === "in" ? "DMED →" : "→ DMED"}</span> ${esc(m.kind)} <span class="small">· ${esc(m.summary || "")} · ${t("st_" + m.status)} · ${dt(m.at)}</span></div>`).join("")}</div></div>` : ""}
           <div class="card"><h2>${t("audit_h")}</h2><div class="feed">${p.audit.map((a) => `<div><span class="badge z-gray">${esc(a.actor || (t("r_" + a.role) === "r_" + a.role ? a.role : t("r_" + a.role)))}</span> ${esc(a.action)} <span class="small">· ${esc(a.detail || "")} · ${dt(a.at)}</span></div>`).join("") || `<span class="small">${t("empty")}</span>`}</div></div></div>
       </div>`;
     $("#bsave").onclick = async () => {
@@ -457,6 +498,7 @@
         await api(`/patients/${id}/consent`, { method: "POST" });
         patient(id);
       };
+    if ($("#bdmed")) $("#bdmed").onclick = () => dmedEvent(p, () => patient(id));
     $("#bdis").onclick = async () => {
       await api(`/patients/${id}/discharge`, { json: {} });
       toast(t("discharge_done"));
@@ -464,8 +506,10 @@
     };
     $("#bcall").onclick = () => {
       if (!p.consent) return toast(t("consent_need"), 4500);
-      const sc = S.meta.scenarios.filter((s) => s.id !== "tashrif_tasdiq");
-      const def = p.kind === "chaqaloq" ? "chaqaloq_30kun" : p.kind === "homilador" ? "homilador" : "chiqarishdan_keyin";
+      const sc = S.meta.scenarios.filter((s) => p.scenarios.includes(s.id)); // only the calls written for this patient
+      if (!sc.length) return toast(t("no_scenario"), 4500);
+      const def =
+        p.kind === "chaqaloq" ? "chaqaloq_30kun" : p.kind === "homilador" ? "homilador" : p.kind === "bola" ? "emlash" : p.marks?.length ? "dispanser" : p.kind === "tuqqan" ? "chiqarishdan_keyin" : "chiqarish_umumiy";
       modal(`<h2>${t("start_call")}</h2><label>${t("scenario")}</label><select id="sc">${sc.map((s) => `<option value="${s.id}" ${s.id === def ? "selected" : ""}>${esc(L(s.title))}</option>`).join("")}</select>
         <label class="mt">${t("speech_lang")}</label><select id="cl"><option value="uz">O'zbekcha</option><option value="ru">Русский</option></select>
         <div class="row-b mt"><button class="btn" id="mk">${t("begin")}</button><button class="btn ghost" data-close>${t("close")}</button></div>`);
@@ -707,6 +751,75 @@
     }
   }
 
+  /* ---------- DMED: the exchange log and the stand-in ---------- */
+  // An event as DMED would send it: an admission, a discharge with the diagnosis, a vaccination that was given.
+  // It enters through the same door a real message does, so everything that follows is the real thing.
+  function dmedEvent(p, after) {
+    const child = p.kind === "bola" || p.kind === "chaqaloq";
+    const opt = (v) => `<option value="${v}">${t("ev_" + v)}</option>`;
+    modal(`<h2>${t("dmed_sim_h")}</h2><p class="small">${esc(p.name)} · ${t("dmed_sim_p")}</p>
+      <label>${t("dmed_event")}</label><select id="dev">${child ? opt("vaccine") : ""}${opt("admit")}${opt("discharge")}</select>
+      <div id="dfields"></div>
+      <div class="row-b mt"><button class="btn" id="dgo">${t("dmed_send")}</button><button class="btn ghost" data-close>${t("close")}</button></div>`);
+    const inp = (id, label, value = "") => `<label class="mt">${label}</label><input id="${id}" type="text" value="${esc(value)}">`;
+    const draw = () => {
+      const ev = $("#dev").value;
+      $("#dfields").innerHTML =
+        ev === "vaccine"
+          ? ""
+          : ev === "admit"
+            ? inp("dh", t("dmed_hospital"), "Tuman markaziy shifoxonasi") +
+              `<label class="mt"><input id="de" type="checkbox" checked style="width:auto"> ${t("dmed_emerg")}</label>` +
+              inp("db", t("dmed_by"), "103 tez yordam brigadasi") +
+              inp("dr", t("dmed_reason"), "Ko'krakda og'riq, qon bosimi 190/110")
+            : inp("di", t("dmed_icd"), "I11.9") + inp("dx", t("dmed_dx"), "Gipertonik kriz") + inp("da", t("dmed_advice"), "Qon bosimini kuniga ikki marta o'lchash; dorilarni uzluksiz ichish");
+    };
+    $("#dev").onchange = draw;
+    draw();
+    $("#dgo").onclick = async () => {
+      const g = (id) => $("#" + id)?.value || "";
+      const body = { patient_id: p.id, event: $("#dev").value, hospital: g("dh"), emergency: $("#de") ? $("#de").checked : true, brought_by: g("db"), reason: g("dr"), icd10: g("di"), diagnosis: g("dx"), advice: g("da") };
+      try {
+        const r = await api("/dmed/simulate", { json: body });
+        toast(`${t("dmed_sent")}: ${r.accepted.map((x) => x.kind).join(", ")}`, 5000);
+        closeModal();
+        after && after();
+      } catch (e) {
+        toast(e.message, 5000);
+      }
+    };
+  }
+  async function dmedPage() {
+    const d = await api("/dmed");
+    const row = (m) =>
+      `<tr class="row" data-m="${m.id}"><td><b>${esc(m.kind)}</b><div class="small">${esc(m.summary || "")}</div></td><td>${m.patient ? `<a href="#/bemor/${m.patient.id}">${esc(m.patient.name)}</a>` : "—"}</td>
+        <td><span class="badge ${m.status === "xato" || m.status === "topilmadi" ? "z-red" : m.status === "navbatda" ? "z-yellow" : "z-green"}">${t("st_" + m.status)}</span></td><td class="small">${dt(m.sent_at || m.at)}</td></tr>`;
+    const table = (rows) =>
+      `<div class="tscroll"><table><thead><tr><th>${t("dmed_kind")}</th><th>${t("th_name")}</th><th>${t("dmed_status")}</th><th>${t("dmed_when")}</th></tr></thead><tbody>${rows.map(row).join("") || `<tr><td colspan="4" class="small">${t("empty")}</td></tr>`}</tbody></table></div>`;
+    const kpi = (v, label, cls = "plain") => `<div class="card kpi ${cls}"><b>${v}</b><span>${label}</span></div>`;
+    $("#app").innerHTML = `<div class="row-b mb"><h1>${t("dmed_h")}</h1><span class="badge ${d.mode === "jonli" ? "z-green" : "z-yellow"}">${t("dmed_mode_" + d.mode)}</span>${d.address ? `<span class="small">${esc(d.address)}</span>` : ""}</div>
+      <div class="card mb"><p>${t(d.mode === "jonli" ? "dmed_live_p" : "dmed_p")}</p>
+        <div class="row-b mt"><input id="dq" type="text" placeholder="${t("dmed_patient")}" style="max-width:260px"><button class="btn" id="dsim">${t("dmed_btn")}</button></div></div>
+      <div class="grid kpis mb">${kpi(d.received, t("dmed_in"))}${kpi(d.sent, t("dmed_out"))}${kpi(d.waiting, t("dmed_wait"), d.waiting ? "yellow" : "plain")}${kpi(d.failed, t("dmed_fail"), d.failed ? "red" : "plain")}</div>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))"><div class="card"><h2>${t("dmed_in")}</h2>${table(d.messages.filter((m) => m.direction === "in"))}</div>
+        <div class="card"><h2>${t("dmed_out")}</h2>${table(d.messages.filter((m) => m.direction === "out"))}</div></div>`;
+    $("#dsim").onclick = async () => {
+      const q = $("#dq").value.trim();
+      if (!q) return $("#dq").focus();
+      const found = await api("/patients?" + new URLSearchParams({ q, limit: 1 }));
+      if (!found.length) return toast(t("empty"));
+      dmedEvent(found[0], dmedPage);
+    };
+    $("#app").onclick = (e) => {
+      const m = e.target.closest("[data-m]");
+      if (!m || e.target.closest("a")) return;
+      const x = d.messages.find((y) => String(y.id) === m.dataset.m);
+      modal(`<h2>${esc(x.kind)}</h2><p class="small">${t("dmed_payload")} · ${x.direction === "in" ? "DMED → Nigoh" : "Nigoh → DMED"}${x.error ? " · " + esc(x.error) : ""}</p><pre class="json">${esc(JSON.stringify(x.payload, null, 1))}</pre>
+        <div class="row-b mt"><button class="btn ghost" data-close>${t("close")}</button></div>`);
+    };
+    refreshEvery(15000, dmedPage, () => document.activeElement?.id !== "dq");
+  }
+
   /* ---------- about ---------- */
   async function about() {
     const m = (S.meta = await api("/meta")),
@@ -755,6 +868,7 @@
       else if (r === "ovoz") await voice();
       else if (r === "vazifalar") await tasks();
       else if (r === "qongiroqlar") await calls();
+      else if (r === "dmed") await dmedPage();
       else if (r === "haqida") await about();
       else await home();
     } catch (e) {

@@ -79,8 +79,38 @@ def iso(d):
     return d.isoformat() + "Z" if d else None
 
 
-def brief(p):
+def sees_all(u, p):
+    """Who may see a confidential dispensary group and its diagnosis: the specialist, the head of the
+    district, and the family doctor the patient is attached to. Everyone else sees only that the patient is
+    under dispensary follow-up."""
+    return bool(u) and (u.role in ("rahbar", "mutaxassis") or (u.role == "shifokor" and (not u.doctor_name or p.doctor == u.doctor_name)))
+
+
+def marks(p, u=None):
+    """The dispensary marks on a patient, as this viewer may see them."""
+    out, hidden = [], False
+    for g in p.groups or []:
+        spec = core.GROUPS.get(g)
+        if not spec:
+            continue
+        if spec["secret"] and not sees_all(u, p):
+            hidden = True
+            continue
+        out.append({"code": g, "uz": spec["uz"], "ru": spec["ru"], "secret": spec["secret"]})
+    if hidden:
+        out.append({"code": "maxfiy", "uz": "Dispanser hisobida", "ru": "Диспансерный учёт", "secret": True})
+    return out
+
+
+def masked(p, u):
+    """True when this viewer must not see the patient's diagnosis: it belongs to a confidential group."""
+    return any(core.GROUPS.get(g, {}).get("secret") for g in p.groups or []) and not sees_all(u, p)
+
+
+def brief(p, u=None):
     return {
+        "marks": marks(p, u),
+        "sex": p.sex,
         "id": p.id,
         "name": p.full_name,
         "kind": p.kind,

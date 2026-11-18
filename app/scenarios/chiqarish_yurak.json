@@ -1,0 +1,62 @@
+{
+ "title": {
+  "uz": "Shifoxonadan keyin: yurak va qon bosimi",
+  "ru": "После больницы: сердце и давление"
+ },
+ "who": "shifoxona",
+ "basis": "DMED tashxisi I00–I99 (qon aylanish tizimi kasalliklari) bo'yicha chiqarilgan bemorni kuzatish; savollarni shifokor tasdiqlaydi",
+ "icd": [
+  "I00-I99"
+ ],
+ "greeting": {
+  "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. Shifoxonadan keyingi ahvolingiz haqida to'rtta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам четыре коротких вопроса о самочувствии после больницы. Отвечайте «да» или «нет»."
+ },
+ "intro": {
+  "uz": "Shifoxonadan keyingi ahvolingiz haqida to'rtta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Задам четыре коротких вопроса о самочувствии после больницы. Отвечайте «да» или «нет»."
+ },
+ "questions": [
+  {
+   "id": "kokrak",
+   "uz": "Ko'krak qafasida og'riq yoki siqilish bo'ldimi?",
+   "ru": "Была ли боль или сдавление в груди?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "complaint": "kokrak_ogrigi"
+  },
+  {
+   "id": "nafas",
+   "uz": "Nafas qisishi yoki hansirash kuchaydimi?",
+   "ru": "Усилилась ли одышка?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "complaint": "nafas_qisishi"
+  },
+  {
+   "id": "shish",
+   "uz": "Oyoqlaringizda shish paydo bo'ldimi yoki kuchaydimi?",
+   "ru": "Появились ли или усилились отёки на ногах?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "complaint": "shish"
+  },
+  {
+   "id": "dori",
+   "uz": "Shifokor yozgan dorilarni ichmay qo'ygan kunlaringiz bo'ldimi?",
+   "ru": "Были ли дни, когда вы не принимали назначенные врачом лекарства?",
+   "type": "yesno",
+   "flag_if": "yes",
+   "extra": "dori"
+  }
+ ],
+ "closing_ok": {
+  "uz": "Rahmat! Javoblaringiz shifokoringizga yetkazildi. Sog' bo'ling!",
+  "ru": "Спасибо! Ваши ответы переданы врачу. Будьте здоровы!"
+ },
+ "closing_alert": {
+  "uz": "Javoblaringizda xavotirli belgilar bor. Iltimos, hoziroq bir yuz uch raqamiga qo'ng'iroq qiling. Shifokoringizga shoshilinch xabar yuborildi.",
+  "ru": "В ваших ответах есть тревожные признаки. Пожалуйста, сейчас же позвоните по номеру сто три. Вашему врачу отправлено срочное сообщение."
+ },
+ "id": "chiqarish_yurak"
+}
