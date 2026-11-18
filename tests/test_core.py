@@ -777,6 +777,8 @@ def test_dmed_reports_a_hospital_stay_and_gets_the_call_back(monkeypatch):
         assert stay["emergency"] and stay["reason"] == "Ko'krakda og'riq" and stay["discharged_at"] is None and d["in_hospital"] >= 1
         assert any(x["id"] == p["id"] and x["in_hospital"] for x in c.get("/api/patients", params={"hospital": 1}).json())
 
+        # a trial call of an after-hospital scenario does not fall on somebody who was not discharged with such a diagnosis
+        assert c.post("/api/calls/round", json={"scenario": "chiqarish_nafas", "test": True}).json()["calls"] == []
         r = sim(event="discharge", icd10="i21.0", diagnosis="O'tkir miokard infarkti", advice="Dorilarni uzluksiz ichish; bir haftadan keyin kardiolog")
         assert r.json()["accepted"][0]["kind"] == "Encounter: chiqarildi"
         full = c.get(f"/api/patients/{p['id']}", headers=doctor).json()

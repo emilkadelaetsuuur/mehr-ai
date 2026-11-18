@@ -269,8 +269,8 @@ def trial_call(db, scenario, lang=None):
     if c:
         c.lang = lang or p.lang or "uz"
         return c
-    if p and who == "emlash" and not vaccines.owed(p, now()):
-        p = None  # the prepared child is up to date by now: any child whose vaccination is due will do
+    if p and not fits(p, scenario):
+        p = None  # the prepared patient is not one this scenario is for (any more): somebody it is for will do
     p = p or (fit[0] if fit else None)
     if not p:
         return None
