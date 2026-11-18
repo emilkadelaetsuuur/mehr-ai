@@ -1,9 +1,9 @@
 #!/bin/bash
-# Release without building an image on the server (see compose.mount.yml for why).
-#   /opt/nigoh/release.sh /opt/nigoh/<archive>.tgz <sha256>
-# Unpacks the archive into /opt/nigoh/src, restarts the app on the existing image with the code mounted,
-# installs any packages the image does not have yet, waits for /api/health, runs the tests and a sign-in
-# check; if the app does not come up, the previous version is put back. Data volumes are kept.
+# Выкладка без сборки образа на сервере (почему — см. compose.mount.yml).
+#   /opt/nigoh/release.sh /opt/nigoh/<архив>.tgz <sha256>
+# Распаковывает архив в /opt/nigoh/src, перезапускает приложение на готовом образе со смонтированным кодом,
+# ставит пакеты, которых ещё нет в образе, ждёт /api/health, запускает тесты и проверку входа всех ролей.
+# Если приложение не поднялось, возвращает предыдущую версию. Данные (тома) сохраняются.
 set -u
 ARCHIVE=${1:?archive path}
 WANT=${2:?sha256 of the archive}
@@ -20,8 +20,8 @@ rm -rf src.old && mv src src.old && mv src.new/nigoh src && rmdir src.new
 [ -d src.old/.git ] && mv src.old/.git src/.git
 ln -sf $ROOT/.env src/.env
 (cd src && $UP 2>&1 | tail -n 2)
-# Packages added to requirements.txt since the image was built are installed into the new container;
-# the application imports them on first use, so it does not have to wait for this.
+# Пакеты, добавленные в requirements.txt после сборки образа, ставятся в новый контейнер;
+# приложение импортирует их при первом обращении, поэтому ждать установки не нужно.
 echo "__PACKAGES=$(docker exec -i nigoh-app-1 pip install -q --disable-pip-version-check --root-user-action=ignore -r /srv/requirements.txt < /dev/null 2>&1 | tail -n 1 | cut -c1-160)"
 
 if ! healthy 45; then

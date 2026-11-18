@@ -1,113 +1,187 @@
-# Nigoh — ona va bola: xavf guruhini nazoratdan chiqarmaslik
+<div align="center">
 
-Umummilliy AI Xakaton, Toshkent bosqichi, «Tibbiyot» treki. Sog'liqni saqlash vazirligi ro'yxatidagi uchta muammo bitta oqimda:
+<img src="web/icon.svg" width="84" alt="Nigoh">
 
-| № | Muammo | Nigoh nima qiladi |
-|---|--------|-------------------|
-| 9 | Homilador va chaqaloqlar monitoringi: tahlil yomonlashsa, mutaxassis kech biladi | Reyestr, «qizil / sariq / yashil» zonalar, soniyalar ichida bildirishnoma |
-| 10 | Smartfon va internet yo'q qishloqlar | Hamshira ovoz bilan aytadi — AI kartani to'ldiradi (oflayn navbat bilan); AI bemorga o'zi qo'ng'iroq qiladi |
-| 11 | Shifoxonadan chiqqan og'ir bemor nazoratsiz qoladi | «Faol chaqiruv»: 24 soatlik taymer, tasdiq, eskalatsiya, bemorning o'zi tasdiqlaydi |
+# Nigoh
 
-## Qanday ishlaydi
+**ИИ-обзвон пациентов и реестр риска для поликлиники**
 
-`Signal → Ma'lumot → Zona → Vazifa → Nazorat`
+Беременные и новорождённые · прививки по календарю · диспансерный учёт · наблюдение после больницы · обмен с DMED по HL7 FHIR
 
-1. **Signal**: laboratoriya tahlili, hamshiraning ovozi, AI qo'ng'iroqdagi javob, shifoxonadan chiqarish.
-2. **Ma'lumot**: nutq → matn (VoiceLab STT, o'zbek/rus) → LLM maydonlarni ajratadi → **kod har bir iqtibosni matndan tekshiradi**; topilmagan maydon olib tashlanadi.
-3. **Zona**: faqat qoidalar (`app/rules.json`) belgilaydi; har bir sabab qiymat, qoida va iqtibos bilan ko'rsatiladi. ML (RandomForest, UCI Maternal Health Risk) — faqat ikkinchi fikr.
-4. **Vazifa**: mutaxassis yoki oilaviy shifokorga 24 soatlik taymer bilan.
-5. **Nazorat**: shifokor tashrifni belgilaydi → AI bemordan «shifokor keldimi?» deb so'raydi → nomuvofiqlik rahbarga chiqadi.
+[**Открыть демо**](https://nasa.cartify.ink) · [Документация](docs/README.md) · [Как устроен звонок](docs/calls.md) · [Интеграция с DMED](docs/dmed.md)
 
-Qo'ng'iroq ssenariylari — fayllar (`app/scenarios/*.json`): yangi bemor guruhi = yangi fayl, kod o'zgarmaydi.
-Chaqaloq ssenariysi JSST jadvaliga tayanadi: 3-kun, 7–14-kun, 6-hafta; savollar — chaqaloqdagi xavf belgilari.
+![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-0.115-009688?logo=fastapi&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-16-4169E1?logo=postgresql&logoColor=white)
+![HL7 FHIR](https://img.shields.io/badge/HL7%20FHIR-R4%20%2F%20R5-E8432E)
+![Языки](https://img.shields.io/badge/интерфейс-узбекский%20%7C%20русский-0b3f3c)
+![Тесты](https://img.shields.io/badge/тесты-27%20пройдено-2ea44f)
 
-## Arxitektura
+<sub>Национальный AI-хакатон, ташкентский этап · трек «Медицина» · 2026</sub>
+
+</div>
+
+---
+
+## Зачем
+
+Пациент из группы риска выпадает из поля зрения поликлиники: анализ ухудшился, а специалист узнал поздно; в селе нет смартфона и интернета; после больницы человека никто не спрашивает, как он. Nigoh закрывает три задачи из списка Министерства здравоохранения одним потоком и расширяет его на прививки и диспансерный учёт.
+
+| № | Проблема | Что делает Nigoh |
+|:-:|----------|------------------|
+| 9 | Мониторинг беременных и новорождённых: ухудшение замечают поздно | Реестр с зонами «красная / жёлтая / зелёная», задача специалисту за секунды |
+| 10 | Сёла без смартфонов и интернета | Медсестра надиктовывает — ИИ заполняет карту (с офлайн-очередью); ИИ сам звонит пациенту |
+| 11 | Тяжёлый пациент после выписки остаётся без наблюдения | «Активный вызов»: таймер 24 часа, подтверждение, эскалация, звонок пациенту на следующий день |
+| + | Пропущенные прививки, диспансерные группы | Календарь прививок по дате рождения, плановые опросы с отдельным согласием |
+
+## Что умеет
+
+- **Звонит как человек.** Здоровается по имени, спрашивает «вы — Дилноза Содикова?» и продолжает только после «да». Чужому человеку о здоровье ничего не говорит.
+- **Задаёт вопросы только своему адресату.** Десять сценариев: беременность, новорождённый, прививки, после выписки (по диагнозу из DMED), диспансерный опрос. Сервер не даст позвонить пациенту с ВИЧ про детей, а маме — про лечение.
+- **Отвечает на вопросы пациента** по памятке из 37 пунктов на основе документов ВОЗ — и обязан сослаться на пункт. Нет ответа в памятке или вопрос о диагнозе и лекарствах — вопрос уходит врачу задачей со сроком.
+- **Решают правила, а не модель.** Зону риска считают правила из `rules.json`, каждая причина показана со значением и цитатой. Тревожный ответ — красная зона, задача специалисту и номер 103 пациенту.
+- **Видит больницу через DMED.** Пациента экстренно увезли — участковый врач сразу видит, кого, когда, куда и почему. После выписки — звонок с вопросами под диагноз, ответы уходят врачу и в DMED.
+- **Сам находит детей, которым пора на прививку**, и звонит маме: называет прививки и спрашивает, сделаны ли они. «Нет» — задача медсестре пригласить ребёнка.
+- **Хранит тайну.** ВИЧ, ИППП, туберкулёз и гепатит видят только специалист, руководитель и лечащий врач; в звонке и уведомлениях диагноз не звучит; звонок возможен только после отдельного записанного согласия.
+- **Пишет в DMED сразу**: ответы звонка, тревожные признаки, задачи, прививки, измерения, согласия — HL7 FHIR, сопоставление по ПИНФЛ.
+
+## Скриншоты
+
+<!-- screenshots -->
+
+## Как это работает
+
+`Сигнал → Данные → Зона → Задача → Контроль`
 
 ```mermaid
 flowchart LR
-  subgraph Kirish
-    L[Laboratoriya: natija yoki CSV]
-    V[Hamshira ovozi, oflayn navbat]
-    C[AI qo'ng'iroqdagi javob]
-    D[Shifoxonadan chiqarish]
+  subgraph IN["Сигналы"]
+    L["Анализы<br/>(результат, CSV)"]
+    V["Голос медсестры<br/>(офлайн-очередь)"]
+    C["Ответ в ИИ-звонке"]
+    D["DMED: госпитализация,<br/>выписка, прививка"]
   end
-  subgraph Yadro
-    R[(Reyestr: PostgreSQL)] --> Z[Qoidalar: rules.json -> zona + sabablar]
-    Z --> T[Vazifa: 24 soat, eskalatsiya]
-    T --> K[Bemor tasdig'i: AI qo'ng'iroq]
+  subgraph CORE["Ядро Nigoh"]
+    R[("Реестр<br/>PostgreSQL")] --> Z["Правила<br/>rules.json → зона и причины"]
+    Z --> T["Задача<br/>24 часа, эскалация"]
+    T --> K["Подтверждение<br/>пациентом: ИИ-звонок"]
   end
   L & V & C & D --> R
-  T --> M[Mutaxassis] & F[Oilaviy shifokor]
-  K --> B[Rahbar: tuman ko'rsatkichlari, shifokorlar kesimi]
-  R --> X[FHIR R4 eksport: DMED bilan integratsiya uchun]
+  T --> M["Специалист"] & F["Семейный врач"] & N["Медсестра"]
+  K --> B["Руководитель:<br/>показатели района"]
+  R <--> X["DMED<br/>HL7 FHIR"]
 ```
 
-Qatlamlar bir-biridan ajratilgan:
+1. **Сигнал** — анализ из лаборатории, голос медсестры, ответ в звонке, событие из больницы.
+2. **Данные** — речь → текст (VoiceLab, узбекский и русский) → языковая модель выделяет поля → **код проверяет каждую цитату по исходному тексту**, поле без цитаты отбрасывается.
+3. **Зона** — только правила; ML-модель (RandomForest на UCI Maternal Health Risk) — лишь второе мнение.
+4. **Задача** — специалисту, семейному врачу или медсестре с таймером; просрочка — эскалация руководителю.
+5. **Контроль** — врач отметил визит → ИИ спрашивает пациента «врач приходил?» → расхождение видит руководитель.
 
-| Qatlam | Fayl | Vazifasi |
-|--------|------|----------|
-| HTTP | `app/api/*.py`, `app/schemas.py` | Marshrutlar va Pydantic tekshiruvi; biznes-mantiq yo'q |
-| Domen | `app/core.py` | Zonani qayta hisoblash, vazifalar, taymerlar, qo'ng'iroqlar, audit, CSV import |
-| Qoidalar | `app/rules.py`, `app/rules.json` | Izohlanadigan zona qoidalari; chegaralar faylda |
-| AI | `app/extract.py`, `app/voicelab.py`, `app/ml.py` | Ajratish + iqtibos tekshiruvi, STT/TTS/LLM mijozi, ML ikkinchi fikr |
-| Integratsiya | `app/fhir.py`, `app/pdfgen.py` | FHIR Bundle, yo'llanma PDF |
-| Ma'lumot | `app/db.py` | Modellar: patients, observations, risk_events, tasks, calls, notices, audit_log |
-| Interfeys | `web/` | PWA, o'zbekcha va ruscha, bemor uchun qo'ng'iroq sahifasi |
+## Пример звонка
 
-## Biznes-qoidalar (kodda va testlarda)
+Сценарий «Беременная: тревожные признаки», реплики ИИ — из кода:
 
-- **Zona ko'tarilishi avtomatik, qizil zonadan tushishi — faqat mutaxassis ko'rigidan keyin.** Yaxshi tahlil kelsa ham, ochiq «Mutaxassis ko'rigi» vazifasi yopilmaguncha bemor qizil zonada qoladi.
-- **Eskirgan o'lchovlar zonaga ta'sir qilmaydi** (`valid_days`, 45 kun).
-- **Rozilik bo'lmasa — qo'ng'iroq yo'q.** AI qo'ng'iroq faqat rozilik qayd etilgan bemorga yaratiladi (409 `consent`).
-- **Ikki tomonlama tasdiq.** Shifokor tashrifni belgilaydi → bemordan so'raladi → «kelmadi» javobi rahbarga nomuvofiqlik sifatida chiqadi.
-- **Hech kim jim qolmaydi.** 7 kun aloqa yo'q — sariq, 14 kun — qizil; qo'ng'iroqqa 3 marta javob bo'lmasa — hamshiraga uyga borish vazifasi.
-- **Muddat.** Vazifa 24 soatda yopilmasa, bir marta rahbarga eskalatsiya qilinadi (fon rejalashtiruvchi har daqiqada tekshiradi).
-- **Shaxsiy hisoblar.** Har bir xodim o'z logini bilan kiradi (parol — tuzli PBKDF2 xesh, sessiya — imzolangan cookie). Rol hisobdan olinadi; oilaviy shifokor faqat o'z bemorlarining vazifalarini ko'radi.
-- **Huquqlar rol bo'yicha.** Vazifani o'sha rol egasi (oilaviy shifokor — faqat o'z bemori bo'yicha) yoki rahbar yopadi; laboratoriya importi — rahbar va mutaxassis; namoyish ma'lumotlarini qayta yaratish va umumiy jurnal — faqat rahbar. Server shu qoidalarni tekshiradi, interfeys ruxsat etilmagan tugmalarni ko'rsatmaydi. Parol atrofidagi bo'shliqlar e'tiborga olinmaydi; ketma-ket noto'g'ri urinishlar vaqtincha cheklanadi.
-- **Qo'ng'iroq yakuni.** Yakuniy so'zni Claude bemorning shu qo'ng'iroqdagi javoblari asosida yozadi, uni VoiceLab ovozi o'qiydi. Xavf bor-yo'qligini model emas, qoidalar hal qiladi. Matn aytilishidan oldin tekshiriladi (til, uzunlik, xavf holatida «bir yuz uch»); tekshiruvdan o'tmasa yoki javob kechiksa, ssenariydagi tayyor matn aytiladi. Modelga bemorning ismi, telefoni va manzili yuborilmaydi. `ANTHROPIC_API_KEY` bo'lmasa, tayyor matn ishlaydi. Bemorga nima aytilgani qo'ng'iroqlar ro'yxatida ko'rinadi.
-- **Qo'ng'iroq suhbat kabi boshlanadi.** AI bemorni ismi va familiyasi bilan ataydi va «Men … bilan gaplashyapmanmi?» deb so'raydi (chaqaloq bo'yicha qo'ng'iroq — onasiga). Faqat «ha» javobidan keyin davom etadi. Boshqa odam olgan bo'lsa, sog'liq haqida hech narsa aytilmaydi: qo'ng'iroq xayrlashib tugaydi va urinish sifatida hisoblanadi (`app/talk.py`).
-- **Bemorning o'z savollari.** Ssenariy savollaridan keyin bemor o'z so'zlari bilan savol beradi. Javob faqat poliklinika eslatmasidan olinadi (`app/advice.json`: har bir band JSSTning qaysi hujjatiga asoslanganini ko'rsatadi). Til modeli mos bandlarni tanlab, og'zaki nutqqa moslab aytadi va qaysi bandlardan foydalanganini ko'rsatishi shart; band ko'rsatilmagan, raqamli yoki boshqa tildagi javob aytilmaydi. Eslatmada javob bo'lmasa yoki savol bemorning tashxisi, tahlili, dorisi haqida bo'lsa, AI javob bermaydi: savol bemor biriktirilgan shifokorga muddatli vazifa bo'lib boradi. Bemor so'zida xavf belgisi bo'lsa, model so'ralmaydi: qoidalar odatdagi qizil yo'lni ishga tushiradi va bemorga 103 aytiladi. Har bir savol, javob, uni kim yozgani va manbasi qo'ng'iroq yozuvida saqlanadi. Eslatma matnini poliklinika shifokori tasdiqlashi kerak.
-- **DMED bilan ikki tomonlama almashinuv** (`app/dmed.py`, `app/exchange.py`, HL7 FHIR). Kiradi: shifoxonaga yotqizish va chiqarish (`Encounter`, tashxis MKB-10 bilan, shifoxona tavsiyalari `CarePlan`), emlash (`Immunization`). Chiqadi: har bir AI qo'ng'iroq javoblari (`QuestionnaireResponse`), xavf belgisi (`Flag`), vazifalar (`Task`), ota-ona aytgan emlash (`Immunization`), o'lchovlar (`Observation`) — saqlangan zahoti, qayta kiritmasdan. Bemor PINFL bo'yicha topiladi. Platformaga kirish (dhp.uz, mijoz ro'yxatdan o'tishi kerak) sozlanmaguncha (`DMED_BASE_URL`, `DMED_TOKEN`) almashinuv tizim ichidagi sinov muhitida ishlaydi: xabarlar «DMED» sahifasida ko'rinadi, voqeani qo'lda yuborish mumkin.
-- **Shifoxona voqealari.** Bemor shoshilinch yotqizilsa, biriktirilgan oilaviy shifokor shu zahoti ko'radi: kim, qachon, qayerga, nima sababdan, kim olib bordi. Chiqarilganda tashxis kartaga yoziladi, «Faol chaqiruv» ochiladi va ertasi kunga AI qo'ng'iroq rejalashtiriladi; savollar tashxisga qarab tanlanadi (I00–I99 — yurak, J00–J99 — nafas, O00–O99 — tug'ruq, qolganlari — umumiy). Javoblar shifokorga va DMEDga boradi.
-- **Emlash taqvimi** (`app/vaccines.json`, `app/vaccines.py`). Bolaning tug'ilgan sanasi va qayd etilgan emlashlar bo'yicha tizim kimning emlash muddati kelganini o'zi topadi va onasiga qo'ng'iroq qiladi: qaysi emlashlar ekanini aytadi, «qilindimi?» deb so'raydi va faqat javobdan kelib chiqadigan savollarni beradi. «Yo'q» — hamshiraga «Emlashga chaqirish» vazifasi; «ha» — ota-ona so'zi sifatida yoziladi va emlash xonasi yozuvi (DMED) kelguncha tasdiqlanmagan hisoblanadi.
-- **Dispanser guruhlari va maxfiylik** (`app/groups.json`). Bemorda guruh belgisi bo'ladi (OIV, jinsiy yo'l bilan yuqadigan infeksiyalar, sil, gepatit, diabet, gipertenziya). Maxfiy guruh nomini va tashxisni faqat mutaxassis, rahbar va biriktirilgan shifokor ko'radi; boshqalarga «Dispanser hisobida» deb ko'rinadi. Qo'ng'iroqda tashxis aytilmaydi, ismdan keyin tug'ilgan yil so'raladi, bildirishnomalarga tashxis yozilmaydi. Bunday qo'ng'iroq faqat bemorning alohida roziligi qayd etilgan bo'lsa qilinadi: rozilikni tashxisni ko'rishga haqli xodim kiritadi, sanasi kartada va reyestrda ko'rinadi, DMEDga `Consent` resursi sifatida boradi.
-- **Har bir ssenariy faqat o'z bemoriga.** Server ssenariy bemorga mos kelmasa qo'ng'iroq yaratmaydi (409): dispanser bemoriga chaqaloq haqida, sog'lom bola onasiga davolanish haqida qo'ng'iroq bo'lmaydi. Savol berishga taklif va eslatma bandlari ham shu bemor guruhiga mos tanlanadi. Birinchi marta ona bo'layotgan ayolga qo'ng'iroq oxirida eslatmaning asosiy bandlari taklif qilinadi.
-- **Audit.** Bemorga tegishli har bir yozuv `audit_log` ga hisob, rol va amal bilan tushadi.
-- **Bildirishnomalar rol bo'yicha:** har kim o'zinikini, rahbar hammasini ko'radi. Sariq va qizil xabarlar Telegram'ga ham boradi: xodim profilidagi havola orqali o'z chatini bir martalik kod bilan ulaydi (`TELEGRAM_BOT_TOKEN` kerak).
-- **Oddiy telefon raqamiga qo'ng'iroq.** `app/telephony.py` — Twilio bilan mos ovozli API uchun adapter: o'sha ssenariy fayli, savol audiosi `<Play>`, javob `<Record>` → STT. `TWILIO_*` sozlanmasa, qo'ng'iroq havola yoki QR orqali ochiladi.
+> **ИИ:** Здравствуйте! Вам звонит Nigoh — помощник поликлиники на основе искусственного интеллекта. Скажите, пожалуйста, вы — Содикова Дилноза?
+> **Пациентка:** Да, я.
+> **ИИ:** Спасибо, Дилноза. Задам пять коротких вопросов о вашем самочувствии. Отвечайте «да» или «нет». В конце вы сможете задать свои вопросы. Была ли в последние дни сильная головная боль?
+> **Пациентка:** Нет.
+> **ИИ:** … Есть ли отёки на ногах, руках или лице?
+> **Пациентка:** Да, ноги отекают.
+> *Правило: отёки у беременной — тревожный признак. Зона пересчитана, специалисту ушла задача, в DMED — `Flag`.*
+> **Пациентка** *(в конце)*: Что мне лучше есть во время беременности?
+> **ИИ:** *Отвечает своими словами по пункту памятки о питании (ВОЗ) и записывает, на какой пункт опирался. Вопрос о диагнозе или лекарствах ушёл бы врачу:* «На этот вопрос лучше ответит ваш врач. Я передала ему ваш вопрос, он свяжется с вами».
+> **ИИ:** В ваших ответах есть тревожные признаки. Пожалуйста, сейчас же позвоните по номеру сто три. Вашему врачу отправлено срочное сообщение.
 
-## Texnologiyalar
+Подробно — в [docs/calls.md](docs/calls.md).
 
-FastAPI · Pydantic · SQLAlchemy · PostgreSQL · Docker Compose · VoiceLab (STT, TTS, LLM) · scikit-learn · ReportLab · HL7 FHIR R4 · PWA (service worker + IndexedDB oflayn navbat) · ruff · pytest · GitHub Actions.
+## Сценарии звонков
 
-## Ishga tushirish
+Сценарий — это JSON-файл в [`app/scenarios/`](app/scenarios): новая группа пациентов — новый файл, код не меняется.
+
+| Сценарий | Кому | О чём спрашивает |
+|----------|------|------------------|
+| `homilador` | беременной | головная боль, зрение, отёки, кровотечение, шевеления плода |
+| `homilador_ahvol` | беременной | самочувствие, сон, настроение, приём витаминов |
+| `chaqaloq_30kun` | маме новорождённого | сосание, судороги, дыхание, вялость, желтуха, температура |
+| `chiqarishdan_keyin` | родильнице после выписки (O00–O99) | температура, кровотечение, ухудшение, лекарства |
+| `emlash` | родителю ребёнка, которому пора на прививку | сделана ли прививка, реакция, болеет ли, придёт ли |
+| `chiqarish_yurak` | после больницы с диагнозом I00–I99 | боль в груди, одышка, отёки, лекарства |
+| `chiqarish_nafas` | после больницы с диагнозом J00–J99 | температура, одышка, кашель, лекарства |
+| `chiqarish_umumiy` | после больницы, остальные диагнозы | температура, боль, ухудшение, лекарства |
+| `dispanser` | пациенту на диспансерном учёте, с отдельным согласием | лекарства, пропущенный осмотр, побочные эффекты, самочувствие |
+| `tashrif_tasdiq` | любому пациенту после визита | приходил ли врач, понятны ли объяснения |
+
+## Структура проекта
+
+```text
+nigoh/
+├── app/                    серверная часть (FastAPI)
+│   ├── api/                HTTP-маршруты: пациенты, задачи, звонки, DMED, телефония
+│   ├── scenarios/          сценарии звонков (JSON)
+│   ├── core.py             предметная логика: зоны, задачи, таймеры, звонки, аудит
+│   ├── rules.py · rules.json         объяснимые правила зон, пороги в файле
+│   ├── talk.py · dialogue.py         живой разговор: приветствие, проверка личности, ответы
+│   ├── closing.py          заключительные слова звонка (Claude / VoiceLab)
+│   ├── extract.py          поля из речи + проверка цитат
+│   ├── dmed.py · exchange.py         обмен с DMED по HL7 FHIR
+│   ├── vaccines.py · vaccines.json   календарь прививок
+│   ├── groups.json         диспансерные группы и признак конфиденциальности
+│   ├── advice.json         памятка для ответов пациенту (ВОЗ)
+│   ├── db.py · seed.py     модели данных и синтетическая база
+│   └── …                   речь (voicelab.py), телефония, Telegram, PDF, ML
+├── web/                    интерфейс: PWA на чистом JS, узбекский и русский
+├── tests/                  27 тестов предметных правил (pytest)
+├── scripts/eval.py         замер точности заполнения карты
+├── gateway/                стенд «Android-телефон с SIM-картой» для звонков на обычные номера
+├── deploy/                 выкладка без сборки образа, с откатом
+├── docs/                   документация
+├── Dockerfile · docker-compose.yml
+└── .env.example            все настройки с пояснениями
+```
+
+## Быстрый старт
 
 ```bash
-cp .env.example .env        # VOICELAB_API_KEY va parollarni kiriting
-docker compose up -d --build
-docker compose exec app python -m scripts.eval   # kartani to'ldirish aniqligini o'lchash
-docker compose exec app pytest -q                # testlar (VoiceLab kerak emas, alohida SQLite bazada)
+cp .env.example .env              # задайте пароли; ключ VoiceLab — по желанию
+docker compose up -d --build      # приложение на http://localhost:18700
+docker compose exec app pytest -q # тесты: без VoiceLab, на отдельной SQLite
 ```
 
-API hujjati: `/api/docs`. Kalitsiz ham ishlaydi: nutq o'rniga matn kiritiladi, maydonlarni qoidalar ajratadi, qo'ng'iroqda tugmalar ishlaydi.
+При первом запуске создаётся синтетическая база: 400 пациентов, четыре учётные записи — `rahbar` (руководитель), `mutaxassis` (специалист), `shifokor` (семейный врач), `hamshira` (медсестра). Документация API — `/api/docs`.
 
-## O'lchovlar
+Без ключей всё работает: вместо речи вводится текст, поля выделяют правила, в звонке работают кнопки. Подробнее — [docs/deploy.md](docs/deploy.md).
 
-- Kartani to'ldirish: 20 ta o'zbek va rus iborasida 113 maydondan 113 tasi to'g'ri (`scripts/eval.py`; iboralar sozlashda ishlatilgan, haqiqiy yozuvlarda qayta o'lchash kerak).
-- ML ikkinchi fikr: 25% tekshiruv tanlanmasida aniqlik 83%, qizil zonani topish 87%.
-- Qo'ng'iroqdagi bitta javob: taxminan 1 soniya (STT + tasniflash).
+## Замеры
 
-## Chegaralar
+| Что | Результат |
+|-----|-----------|
+| Заполнение карты по речи | 113 из 113 полей на 20 фразах (узбекский и русский), `scripts/eval.py`; фразы использовались при настройке — на реальных записях замер нужно повторить |
+| ML — второе мнение | точность 83 %, полнота по красной зоне 87 % (25 % отложенной выборки) |
+| Один ответ в звонке | около 1 секунды (распознавание + классификация) |
+| Ответ сайта под нагрузкой демо | 0,1–0,6 с |
 
-- Tashxis va davolash qarorini shifokor qabul qiladi; AI hisoblaydi, eslatadi, yetkazadi.
-- AI qo'ng'iroqda o'zini AI deb tanishtiradi, tashxis qo'ymaydi va davo tayinlamaydi; umumiy parvarish bo'yicha faqat eslatmadagi maslahatni aytadi, xavf belgisida 103 ni aytadi.
-- Eslatma (`app/advice.json`) JSST tavsiyalari asosida yozilgan; milliy klinik protokollar bilan solishtirilmagan va shifokor tomonidan hali tasdiqlanmagan. Telefon liniyasi (`app/telephony.py`) hozircha eski tartibda: ism bilan salomlashuv va erkin savollar faqat havola/QR orqali ochiladigan qo'ng'iroqda.
-- Barcha ma'lumotlar sintetik. Ovoz yozuvi saqlanmaydi (transkripsiya olingach, o'chiriladi).
-- To'rtta namoyish hisobi (`rahbar`, `mutaxassis`, `shifokor`, `hamshira`) bitta boshlang'ich parol bilan yaratiladi; ishchi versiyada kirish OneID/DMED orqali bo'ladi.
-- DMED bilan almashinuv haqiqiy platformada sinalmagan: kirish ruxsati yo'q. Resurslar platforma yo'riqnomasidagi profillarga (FHIR R5) tekshirilmagan; PINFL identifikator tizimi (`DMED_PINFL_SYSTEM`) yo'riqnomadan olinishi kerak.
-- Emlash taqvimi JSST ma'lumotlari va SSV e'lon qilgan taqvim bo'yicha tuzilgan; amaldagi buyruq bilan solishtirilishi kerak.
-- Telefon liniyasi va Telegram kodi testlar bilan qoplangan, lekin jonli provayder va bot bilan hali sinalmagan: buning uchun hisob, raqam va token kerak.
-- O'zbekcha matnlarni ona tili sohibi (shifokor) tekshirishi kerak.
-- Sxema o'zgarsa, sintetik baza qayta yaratiladi; ishchi versiyada Alembic migratsiyalari ishlatiladi.
-- Zona chegaralari — umumiy mo'ljal; yakuniy qiymatlarni shifokor milliy klinik protokol bo'yicha tasdiqlaydi.
-- Haqiqiy telefon tarmog'i (SIP) ulanmagan: namoyishda qo'ng'iroq havola yoki QR orqali ochiladi; dialog mantig'i bir xil.
+## Честно об ограничениях
+
+- Диагноз и лечение назначает врач. ИИ считает, напоминает, доносит; в звонке представляется ИИ и при тревожном признаке называет 103.
+- **DMED** — подключения к настоящей платформе нет: dhp.uz пускает только зарегистрированных клиентов. Готово всё, кроме доступа; пока работает тестовая среда внутри системы.
+- **Памятка и календарь прививок** составлены по документам ВОЗ и опубликованному календарю Минздрава; врач их ещё не утвердил, с действующим приказом не сверены.
+- **Узбекские тексты** звонков должен вычитать носитель языка.
+- **Обычные телефонные номера**: адаптер для голосового API и стенд с Android-телефоном готовы, с живым оператором связи не проверены. На демо звонок открывается по ссылке или QR-коду — логика диалога та же.
+- Все данные синтетические. Запись голоса не хранится: после расшифровки удаляется.
+
+## Документация
+
+| Документ | О чём |
+|----------|-------|
+| [Архитектура](docs/architecture.md) | слои, модули, модель данных, фоновые процессы |
+| [ИИ-звонок](docs/calls.md) | ход разговора, сценарии, ответы по памятке, заключительные слова |
+| [Интеграция с DMED](docs/dmed.md) | какие FHIR-ресурсы приходят и уходят, сопоставление, журнал |
+| [Конфиденциальность и доступ](docs/privacy.md) | роли, диспансерные группы, отдельное согласие |
+| [Правила предметной области](docs/rules.md) | зоны, сроки, эскалации, прививки, больничные события |
+| [Запуск и выкладка](docs/deploy.md) | локальный запуск, переменные окружения, выкладка на сервер |
+| [Звонки через телефон с SIM](gateway/README.md) | стенд на Android-телефоне |
+
+## Технологии
+
+FastAPI · Pydantic · SQLAlchemy · PostgreSQL · Docker Compose · VoiceLab (STT, TTS, LLM) · Claude · scikit-learn · ReportLab · HL7 FHIR · PWA (service worker, офлайн-очередь в IndexedDB) · pytest · ruff

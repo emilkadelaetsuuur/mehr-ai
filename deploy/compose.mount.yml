@@ -1,8 +1,8 @@
-# Release without an image build: the code is mounted over the image that already holds the dependencies.
-# Use it when requirements.txt has not changed, or when building on the server is not wanted
-# (on 2026-11-18 an image build on this host crashed the Docker daemon and took every site down with it):
+# Выкладка без сборки образа: код монтируется поверх образа, в котором уже стоят зависимости.
+# Нужна, когда requirements.txt не менялся или собирать образ на сервере нельзя
+# (18.11.2026 сборка образа на этом сервере уронила Docker и вместе с ним все сайты):
 #   docker compose -f docker-compose.yml -f deploy/compose.mount.yml up -d --no-build
-# Back to the code baked into the image:  docker compose -f docker-compose.yml up -d --no-build
+# Вернуться к коду внутри образа:  docker compose -f docker-compose.yml up -d --no-build
 services:
   app:
     volumes:

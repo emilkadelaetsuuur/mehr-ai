@@ -1,5 +1,23 @@
+# Секреты
 .env
+
+# Данные локального запуска
 data/
+
+# Python
 __pycache__/
 *.pyc
+.venv/
+venv/
 .pytest_cache/
+.ruff_cache/
+
+# Системное
+.DS_Store
+Thumbs.db
+*.log
+
+# Стенд с SIM-картой: ключ, профиль браузера, adb
+gateway/gateway.key
+gateway/browser-profile/
+gateway/platform-tools/
