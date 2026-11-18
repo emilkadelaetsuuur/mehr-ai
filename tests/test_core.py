@@ -163,14 +163,23 @@ def test_symptom_calls_alarm_only_on_yes():
     assert len(symptom) == 3 and all(q["flag_if"] == "yes" for s in symptom for q in s["questions"] if q["type"] == "yesno")
     with TestClient(app) as c:
         p = c.post("/api/patients/confirm", json={"fields": {"full_name": "Qo'ng'iroq Sinov", "birth_year": 1996, "kind": "homilador"}, "consent": True}).json()
-        outcomes = {}
-        for answer in ("no", "yes"):
-            call = c.post(f"/api/patients/{p['id']}/calls", json={"scenario": "homilador"}).json()
+
+        def ring(scenario, answer):
+            call = c.post(f"/api/patients/{p['id']}/calls", json={"scenario": scenario}).json()
             for q in c.get(f"/api/call/{call['token']}").json()["questions"]:
                 c.post(f"/api/call/{call['token']}/answer", data={"qid": q["id"], "value": answer})
-            outcomes[answer] = c.post(f"/api/call/{call['token']}/finish").json()
-        assert not outcomes["no"]["alert"] and outcomes["no"]["flags"] == [] and outcomes["no"]["zone"] == "green"
-        assert outcomes["yes"]["alert"] and outcomes["yes"]["zone"] == "red" and len(outcomes["yes"]["flags"]) == 5
+            return c.post(f"/api/call/{call['token']}/finish").json()
+
+        calm = ring("homilador", "no")
+        assert not calm["alert"] and calm["flags"] == [] and calm["zone"] == "green"
+        alarm = ring("homilador", "yes")
+        assert alarm["alert"] and alarm["zone"] == "red" and len(alarm["flags"]) == 5
+        # The patient is red now and stays red until the specialist has seen her, but what a caller hears
+        # depends on the answers of that call alone.
+        again = ring("homilador", "no")
+        assert again["zone"] == "red" and not again["alert"]
+        visit = ring("tashrif_tasdiq", "yes")
+        assert visit["verified"] is True and not visit["alert"]  # a confirmed visit of a red-zone patient is not an alarm
 
 
 def test_sign_in_forgives_paste_noise_but_not_a_wrong_password(monkeypatch):

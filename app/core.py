@@ -248,12 +248,14 @@ def finish_call(db, call):
                 f"Отзыв пациента: {p.full_name} — объяснения врача были непонятны.",
             )
         p.last_contact_at = now()
-        zone = p.zone
+        zone, alert = p.zone, False  # the visit check has no symptoms: its outcome is `verified`
     else:
         data["complaints"] = sorted(set(complaints))
         data["extra_flags"] = sorted(set(extra))
         zone, _ = add_observation(db, p, "qongiroq", data, quotes, "\n".join(lines), "Nigoh AI")
-    return {"zone": zone, "flags": call.flags, "alert": bool(complaints) or zone == "red", "verified": verified}
+        # What the caller hears depends on this call's answers alone, not on the zone the patient was in before.
+        alert = bool(complaints) or rules.evaluate(p.kind, data)[0] == "red"
+    return {"zone": zone, "flags": call.flags, "alert": alert, "verified": verified}
 
 
 def call_no_answer(db, call):
