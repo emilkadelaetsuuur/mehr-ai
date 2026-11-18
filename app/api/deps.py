@@ -1,12 +1,9 @@
 """Shared pieces of the HTTP layer: database session, caller role, JSON views of the models."""
 
-import hashlib
-import hmac
-
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException, Request
 
 from .. import config, core
-from ..db import Patient, SessionLocal
+from ..db import Patient, SessionLocal, User
 
 ROLES = ("rahbar", "mutaxassis", "shifokor", "hamshira")
 
@@ -19,13 +16,14 @@ def db_session():
         db.close()
 
 
-def role(x_role: str = Header("rahbar")):
-    """The role the interface is used in. It scopes lists and is written to the audit log."""
-    return x_role if x_role in ROLES else "rahbar"
-
-
-def auth_token():
-    return hmac.new(config.SECRET_KEY.encode(), config.DEMO_PASSWORD.encode(), hashlib.sha256).hexdigest()[:40]
+def current_user(request: Request, db=Depends(db_session), x_role: str = Header("")) -> User:
+    """The signed-in account. With auth switched off (local runs, tests) the caller acts as the
+    head of the district, or as the role named in X-Role."""
+    uid = getattr(request.state, "uid", None)
+    user = db.get(User, uid) if uid else None
+    if user:
+        return user
+    return db.query(User).filter(User.role == (x_role if x_role in ROLES else "rahbar")).first()
 
 
 def get_patient(db, pid: int) -> Patient:

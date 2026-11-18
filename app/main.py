@@ -1,6 +1,5 @@
 """Nigoh application: wiring only. Domain logic lives in core.py, HTTP handlers in app/api/."""
 
-import hmac
 import logging
 import os
 import threading
@@ -10,15 +9,14 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import config, core, ml, seed, voicelab
-from .api import patients, public, system, voice, work
-from .api.deps import auth_token
+from . import auth, config, core, ml, seed, telegram, voicelab
+from .api import patients, public, system, tel, voice, work
 from .db import Patient, SessionLocal, init_db
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 log = logging.getLogger("nigoh")
 WEB = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
-OPEN_PATHS = ("/api/login", "/api/health", "/api/call/", "/api/qr", "/api/meta")
+OPEN_PATHS = ("/api/login", "/api/logout", "/api/health", "/api/call/", "/api/tel/", "/api/qr", "/api/meta")
 _stop = threading.Event()
 
 
@@ -44,12 +42,14 @@ def warm_speech():
 async def lifespan(_app):
     init_db()
     with SessionLocal() as db:
+        auth.ensure_users(db)
         if db.query(Patient).count() == 0:
             log.info("seeded %s synthetic patients", seed.run(db))
         core.sweep(db)
     ml.load()
     threading.Thread(target=warm_speech, daemon=True).start()
     threading.Thread(target=scheduler, daemon=True).start()
+    threading.Thread(target=telegram.poll, args=(_stop,), daemon=True).start()
     yield
     _stop.set()
 
@@ -58,10 +58,11 @@ app = FastAPI(title="Nigoh", version="1.1.0", docs_url="/api/docs", openapi_url=
 
 
 @app.middleware("http")
-async def auth(request: Request, call_next):
+async def session_guard(request: Request, call_next):
     path = request.url.path
+    request.state.uid = auth.read_session(request.cookies.get(auth.COOKIE, ""))
     guarded = config.DEMO_PASSWORD and path.startswith("/api/") and not path.startswith(OPEN_PATHS)
-    if guarded and not hmac.compare_digest(request.cookies.get("nigoh_auth", ""), auth_token()):
+    if guarded and request.state.uid is None:
         return JSONResponse({"detail": "auth"}, status_code=401)
     resp = await call_next(request)
     if path.endswith((".html", ".js", ".css")) or path == "/" or path.startswith("/call/"):
@@ -69,7 +70,7 @@ async def auth(request: Request, call_next):
     return resp
 
 
-for module in (system, patients, work, voice, public):
+for module in (system, patients, work, voice, public, tel):
     app.include_router(module.router)
 
 

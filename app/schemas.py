@@ -8,7 +8,13 @@ Kind = Literal["homilador", "tuqqan", "chaqaloq", "boshqa"]
 
 
 class LoginIn(BaseModel):
+    username: str = "rahbar"
     password: str = ""
+
+
+class PasswordIn(BaseModel):
+    old: str
+    new: str = Field(min_length=6, max_length=100)
 
 
 class ExtractIn(BaseModel):

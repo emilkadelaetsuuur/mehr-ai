@@ -58,7 +58,7 @@
   },
   {
    "id": "harorat",
-   "uz": "Chaqaloqning tana harorati nechchi? O'lchamagan bo'lsangiz, «bilmayman» deng.",
+   "uz": "Chaqaloqning tana harorati necha daraja? O'lchamagan bo'lsangiz, «bilmayman» deng.",
    "ru": "Какая у малыша температура? Если не измеряли, скажите «не знаю».",
    "type": "number",
    "field": "temp"

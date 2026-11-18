@@ -200,11 +200,16 @@ YES = ["ha", "xa", "bor", "shunday", "albatta", "to'g'ri", "keldi", "kelgan", "�
 NO = ["yo'q", "yoq", "emas", "kelmadi", "kelmagan", "нет", "не было", "не приходил", "нету", "неа"]
 
 
+SHORT_YES = {"x", "h", "ha", "xa", "he", "hə", "xo'p", "hop", "xop", "mayli", "да", "ага"}
+
+
 def yes_no(text, question=""):
     """Classify a spoken answer: 'yes' | 'no' | 'unclear'. Keywords first, LLM for the rest."""
     low = " " + _norm(text) + " "
     if not low.strip():
         return "unclear"
+    if low.strip() in SHORT_YES:  # a one-syllable "Ha" is often heard as "X" or "Xa"
+        return "yes"
     no = any(f" {_norm(w)} " in low for w in NO) or bool(re.search(r"\w+ma(y|d)\w*\b", low)) or " не " in low
     yes = any(f" {_norm(w)} " in low for w in YES)
     if no and not yes:

@@ -1,6 +1,5 @@
-"""Login, district dashboard, reference data, laboratory import, audit log."""
+"""Login and accounts, district dashboard, reference data, laboratory import, audit log."""
 
-import hmac
 import io
 import json
 import os
@@ -11,10 +10,10 @@ import qrcode.image.svg
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import event
 
-from .. import config, core, ml, rules, seed, voicelab
-from ..db import AuditLog, Notice, Patient, SessionLocal
-from ..schemas import LabImportIn, LoginIn
-from .deps import auth_token, brief, db_session, iso, role
+from .. import auth, config, core, ml, rules, seed, telegram, telephony, voicelab
+from ..db import AuditLog, Notice, Patient, SessionLocal, User
+from ..schemas import LabImportIn, LoginIn, PasswordIn
+from .deps import brief, current_user, db_session, iso
 
 router = APIRouter(prefix="/api")
 _dash = {"at": 0.0, "data": None}
@@ -31,20 +30,52 @@ def health():
 
 
 @router.post("/login")
-def login(body: LoginIn, response: Response):
-    if config.DEMO_PASSWORD and not hmac.compare_digest(body.password, config.DEMO_PASSWORD):
+def login(body: LoginIn, response: Response, db=Depends(db_session)):
+    user = db.query(User).filter(User.username == body.username.strip().lower()).first()
+    if config.DEMO_PASSWORD and not (user and auth.check_password(body.password, user.password_hash)):
         raise HTTPException(401, "wrong")
-    response.set_cookie("nigoh_auth", auth_token(), httponly=True, samesite="lax", max_age=14 * 86400, secure=config.PUBLIC_URL.startswith("https"))
+    if user:
+        response.set_cookie(
+            auth.COOKIE,
+            auth.make_session(user.id),
+            httponly=True,
+            samesite="lax",
+            max_age=config.SESSION_DAYS * 86400,
+            secure=config.PUBLIC_URL.startswith("https"),
+        )
+    return {"ok": True}
+
+
+@router.post("/logout")
+def logout(response: Response):
+    response.delete_cookie(auth.COOKIE)
     return {"ok": True}
 
 
 @router.get("/me")
-def me(r: str = Depends(role)):
-    return {"ok": True, "role": r}
+def me(u=Depends(current_user)):
+    return {
+        "username": u.username,
+        "name": u.full_name,
+        "role": u.role,
+        "doctor": u.doctor_name,
+        "auth": bool(config.DEMO_PASSWORD),
+        "telegram": {"enabled": telegram.enabled(), "linked": bool(u.telegram_chat_id), "link": telegram.link_for(u)},
+    }
+
+
+@router.post("/me/password")
+def change_password(body: PasswordIn, db=Depends(db_session), u=Depends(current_user)):
+    if not auth.check_password(body.old, u.password_hash):
+        raise HTTPException(400, "wrong")
+    u.password_hash = auth.hash_password(body.new)
+    core.audit(db, u, "password_changed")
+    db.commit()
+    return {"ok": True}
 
 
 @router.get("/meta")
-def meta():
+def meta(db=Depends(db_session)):
     ev_path = os.path.join(config.DATA_DIR, "eval.json")
     ev = None
     if os.path.exists(ev_path):
@@ -54,6 +85,7 @@ def meta():
         "district": config.DISTRICT,
         "auth": bool(config.DEMO_PASSWORD),
         "voicelab": voicelab.status(),
+        "telephony": telephony.enabled(),
         "ml": ml.metrics(),
         "rules": rules.T,
         "complaints": {k: {"uz": v[0], "ru": v[1]} for k, v in rules.COMPLAINTS.items()},
@@ -62,17 +94,18 @@ def meta():
         ],
         "eval": ev,
         "hours": config.ACTIVE_CALL_HOURS,
+        "accounts": [{"username": x.username, "name": x.full_name, "role": x.role} for x in db.query(User).order_by(User.id)],
     }
 
 
 @router.get("/dashboard")
-def dashboard(db=Depends(db_session), r: str = Depends(role)):
+def dashboard(db=Depends(db_session), u=Depends(current_user)):
     if _dash["data"] is None or time.time() - _dash["at"] > 5:
         _dash["data"], _dash["at"] = core.dashboard(db), time.time()
     d = dict(_dash["data"])
     q = db.query(Notice)
-    if r != "rahbar":  # everyone sees their own notices; the head of the district sees all
-        q = q.filter(Notice.role == r)
+    if u.role != "rahbar":  # everyone sees their own notices; the head of the district sees all
+        q = q.filter(Notice.role == u.role)
     d["notices"] = [
         {"id": n.id, "level": n.level, "role": n.role, "uz": n.text_uz, "ru": n.text_ru, "at": iso(n.created_at), "patient_id": n.patient_id}
         for n in q.order_by(Notice.id.desc()).limit(25)
@@ -87,14 +120,15 @@ def audit_log(patient_id: int = 0, db=Depends(db_session)):
     if patient_id:
         q = q.filter(AuditLog.patient_id == patient_id)
     return [
-        {"at": iso(a.at), "role": a.role, "action": a.action, "patient_id": a.patient_id, "detail": a.detail} for a in q.order_by(AuditLog.id.desc()).limit(100)
+        {"at": iso(a.at), "role": a.role, "actor": a.actor, "action": a.action, "patient_id": a.patient_id, "detail": a.detail}
+        for a in q.order_by(AuditLog.id.desc()).limit(100)
     ]
 
 
 @router.post("/import/lab")
-def import_lab(body: LabImportIn, db=Depends(db_session), r: str = Depends(role)):
+def import_lab(body: LabImportIn, db=Depends(db_session), u=Depends(current_user)):
     res = core.import_lab(db, body.csv)
-    core.audit(db, r, "lab_import", None, f"{res['matched']}/{res['rows']} qator, {len(res['changed'])} zona o'zgardi")
+    core.audit(db, u, "lab_import", None, f"{res['matched']}/{res['rows']} qator, {len(res['changed'])} zona o'zgardi")
     db.commit()
     return res
 
@@ -110,8 +144,8 @@ def qr(u: str):
 
 
 @router.post("/demo/reset")
-def reset(db=Depends(db_session), r: str = Depends(role)):
+def reset(db=Depends(db_session), u=Depends(current_user)):
     n = seed.run(db)
-    core.audit(db, r, "demo_reset", None, f"{n} bemor")
+    core.audit(db, u, "demo_reset", None, f"{n} bemor")
     db.commit()
     return {"patients": n}

@@ -1,5 +1,5 @@
 // Offline shell: the app opens without internet; voice notes wait in a local queue (see app.js).
-const CACHE = "nigoh-v1",
+const CACHE = "nigoh-v2",
   SHELL = ["/", "/index.html", "/styles.css", "/i18n.js", "/app.js", "/icon.svg", "/manifest.json"];
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));

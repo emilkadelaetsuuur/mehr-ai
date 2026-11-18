@@ -62,8 +62,10 @@ Qatlamlar bir-biridan ajratilgan:
 - **Ikki tomonlama tasdiq.** Shifokor tashrifni belgilaydi → bemordan so'raladi → «kelmadi» javobi rahbarga nomuvofiqlik sifatida chiqadi.
 - **Hech kim jim qolmaydi.** 7 kun aloqa yo'q — sariq, 14 kun — qizil; qo'ng'iroqqa 3 marta javob bo'lmasa — hamshiraga uyga borish vazifasi.
 - **Muddat.** Vazifa 24 soatda yopilmasa, bir marta rahbarga eskalatsiya qilinadi (fon rejalashtiruvchi har daqiqada tekshiradi).
-- **Audit.** Bemorga tegishli har bir yozuv `audit_log` ga rol va amal bilan tushadi.
-- **Bildirishnomalar rol bo'yicha:** har kim o'zinikini, rahbar hammasini ko'radi.
+- **Shaxsiy hisoblar.** Har bir xodim o'z logini bilan kiradi (parol — tuzli PBKDF2 xesh, sessiya — imzolangan cookie). Rol hisobdan olinadi; oilaviy shifokor faqat o'z bemorlarining vazifalarini ko'radi.
+- **Audit.** Bemorga tegishli har bir yozuv `audit_log` ga hisob, rol va amal bilan tushadi.
+- **Bildirishnomalar rol bo'yicha:** har kim o'zinikini, rahbar hammasini ko'radi. Sariq va qizil xabarlar Telegram'ga ham boradi: xodim profilidagi havola orqali o'z chatini bir martalik kod bilan ulaydi (`TELEGRAM_BOT_TOKEN` kerak).
+- **Oddiy telefon raqamiga qo'ng'iroq.** `app/telephony.py` — Twilio bilan mos ovozli API uchun adapter: o'sha ssenariy fayli, savol audiosi `<Play>`, javob `<Record>` → STT. `TWILIO_*` sozlanmasa, qo'ng'iroq havola yoki QR orqali ochiladi.
 
 ## Texnologiyalar
 
@@ -91,7 +93,9 @@ API hujjati: `/api/docs`. Kalitsiz ham ishlaydi: nutq o'rniga matn kiritiladi, m
 - Tashxis va davolash qarorini shifokor qabul qiladi; AI hisoblaydi, eslatadi, yetkazadi.
 - AI qo'ng'iroqda o'zini AI deb tanishtiradi, davolash bo'yicha maslahat bermaydi, xavf belgisida 103 ni aytadi.
 - Barcha ma'lumotlar sintetik. Ovoz yozuvi saqlanmaydi (transkripsiya olingach, o'chiriladi).
-- Kirish — bitta umumiy parol va rol tanlash: namoyish darajasi. Ishchi versiyada har bir xodim uchun alohida hisob (OneID/DMED) kerak.
+- To'rtta namoyish hisobi (`rahbar`, `mutaxassis`, `shifokor`, `hamshira`) bitta boshlang'ich parol bilan yaratiladi; ishchi versiyada kirish OneID/DMED orqali bo'ladi.
+- Telefon liniyasi va Telegram kodi testlar bilan qoplangan, lekin jonli provayder va bot bilan hali sinalmagan: buning uchun hisob, raqam va token kerak.
+- O'zbekcha matnlarni ona tili sohibi (shifokor) tekshirishi kerak.
 - Sxema o'zgarsa, sintetik baza qayta yaratiladi; ishchi versiyada Alembic migratsiyalari ishlatiladi.
 - Zona chegaralari — umumiy mo'ljal; yakuniy qiymatlarni shifokor milliy klinik protokol bo'yicha tasdiqlaydi.
 - Haqiqiy telefon tarmog'i (SIP) ulanmagan: namoyishda qo'ng'iroq havola yoki QR orqali ochiladi; dialog mantig'i bir xil.

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 from .. import config, core, fhir, ml, pdfgen, rules
 from ..db import AuditLog, Patient
 from ..schemas import CallIn, ConfirmIn, NoteIn, ObservationIn
-from .deps import brief, call_json, db_session, get_patient, iso, role, task_json
+from .deps import brief, call_json, current_user, db_session, get_patient, iso, task_json
 
 router = APIRouter(prefix="/api/patients")
 
@@ -29,7 +29,7 @@ def list_patients(zone: str = "", q: str = "", kind: str = "", silent: int = 0, 
 
 
 @router.post("/confirm")
-def confirm(body: ConfirmIn, db=Depends(db_session), r: str = Depends(role)):
+def confirm(body: ConfirmIn, db=Depends(db_session), u=Depends(current_user)):
     """Save a card the nurse has checked. Finds the patient by name and birth year or creates a new one."""
     f = body.fields
     p = db.get(Patient, body.patient_id) if body.patient_id else None
@@ -53,7 +53,7 @@ def confirm(body: ConfirmIn, db=Depends(db_session), r: str = Depends(role)):
     zone, reasons = core.add_observation(db, p, "ovoz", data, body.quotes, body.transcript, body.author)
     if f.referral:
         core.notify(db, p, "shifokor", "info", f"{p.full_name}: yo'llanma — {f.referral}", f"{p.full_name}: направление — {f.referral}")
-    core.audit(db, r, "card_created" if created else "card_updated", p, f"zona {zone}; ovozli kiritish")
+    core.audit(db, u, "card_created" if created else "card_updated", p, f"zona {zone}; ovozli kiritish")
     db.commit()
     return {"id": p.id, "created": created, "zone": zone, "reasons": reasons, "referral": f.referral, "consent": bool(p.consent_at)}
 
@@ -83,14 +83,14 @@ def patient_card(pid: int, db=Depends(db_session)):
         "tasks": [task_json(t) for t in sorted(p.tasks, key=lambda t: t.created_at, reverse=True)],
         "calls": [call_json(c) for c in sorted(p.calls, key=lambda c: c.planned_at, reverse=True)],
         "audit": [
-            {"at": iso(a.at), "role": a.role, "action": a.action, "detail": a.detail}
+            {"at": iso(a.at), "role": a.role, "actor": a.actor, "action": a.action, "detail": a.detail}
             for a in db.query(AuditLog).filter(AuditLog.patient_id == p.id).order_by(AuditLog.id.desc()).limit(12)
         ],
     }
 
 
 @router.post("/{pid}/observations")
-def add_result(pid: int, body: ObservationIn, db=Depends(db_session), r: str = Depends(role)):
+def add_result(pid: int, body: ObservationIn, db=Depends(db_session), u=Depends(current_user)):
     p = get_patient(db, pid)
     data = body.values()
     if body.complaints is not None:
@@ -99,33 +99,33 @@ def add_result(pid: int, body: ObservationIn, db=Depends(db_session), r: str = D
         raise HTTPException(400, "empty")
     old = p.zone
     zone, reasons = core.add_observation(db, p, body.source, data, {}, body.text, body.author, contact=body.source != "tahlil")
-    core.audit(db, r, "result_added", p, f"{body.source}: zona {old} -> {zone}")
+    core.audit(db, u, "result_added", p, f"{body.source}: zona {old} -> {zone}")
     db.commit()
     return {"zone": zone, "old": old, "reasons": reasons}
 
 
 @router.post("/{pid}/discharge")
-def discharge(pid: int, body: NoteIn = NoteIn(), db=Depends(db_session), r: str = Depends(role)):
+def discharge(pid: int, body: NoteIn = NoteIn(), db=Depends(db_session), u=Depends(current_user)):
     p = get_patient(db, pid)
     t = core.discharge(db, p, body.note)
     for k in db.query(Patient).filter(Patient.mother_id == p.id).all():  # the newborn goes home too
         core.discharge(db, k)
-    core.audit(db, r, "discharged", p, "Faol chaqiruv ochildi")
+    core.audit(db, u, "discharged", p, "Faol chaqiruv ochildi")
     db.commit()
     return task_json(t)
 
 
 @router.post("/{pid}/consent")
-def consent(pid: int, db=Depends(db_session), r: str = Depends(role)):
+def consent(pid: int, db=Depends(db_session), u=Depends(current_user)):
     p = get_patient(db, pid)
     p.consent_at = p.consent_at or core.now()
-    core.audit(db, r, "consent_recorded", p, "Ma'lumotlarni qayta ishlash va AI qo'ng'iroqlarga rozilik")
+    core.audit(db, u, "consent_recorded", p, "Ma'lumotlarni qayta ishlash va AI qo'ng'iroqlarga rozilik")
     db.commit()
     return {"consent": True}
 
 
 @router.post("/{pid}/calls")
-def new_call(pid: int, body: CallIn, db=Depends(db_session), r: str = Depends(role)):
+def new_call(pid: int, body: CallIn, db=Depends(db_session), u=Depends(current_user)):
     p = get_patient(db, pid)
     if body.scenario not in core.SCENARIOS:
         raise HTTPException(400, "scenario")
@@ -135,7 +135,7 @@ def new_call(pid: int, body: CallIn, db=Depends(db_session), r: str = Depends(ro
         c = core.create_call(db, p, body.scenario)
     except core.ConsentRequired:
         raise HTTPException(409, "consent")
-    core.audit(db, r, "call_created", p, body.scenario)
+    core.audit(db, u, "call_created", p, body.scenario)
     db.commit()
     return call_json(c)
 

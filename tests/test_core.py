@@ -43,6 +43,7 @@ def test_fallback_and_yes_no():
     assert extract.yes_no("yo'q, og'rimayapti") == "no"
     assert extract.yes_no("ha, bor") == "yes"
     assert extract.yes_no("нет, не было") == "no"
+    assert extract.yes_no("X.") == "yes" and extract.yes_no("Xa") == "yes"
 
 
 def test_full_flow():
@@ -127,3 +128,51 @@ def test_validation_lab_import_and_fhir():
         assert {"Patient", "Observation", "RiskAssessment", "Task"} <= kinds
         d = c.get("/api/dashboard", headers={"X-Role": "hamshira"}).json()
         assert all(n["role"] == "hamshira" for n in d["notices"]) and d["doctors"]
+
+
+def test_personal_accounts_and_doctor_scope(monkeypatch):
+    from app import config
+
+    with TestClient(app) as c:
+        m = c.get("/api/patients", params={"q": "Valiyeva Madina"}).json()[0]
+        c.post(f"/api/patients/{m['id']}/discharge", json={})
+        monkeypatch.setattr(config, "DEMO_PASSWORD", "yoqilgan")  # switch auth on; demo accounts were created with "demo"
+        assert c.get("/api/dashboard").status_code == 401
+        assert c.post("/api/login", json={"username": "shifokor", "password": "xato"}).status_code == 401
+        assert c.post("/api/login", json={"username": "shifokor", "password": "demo"}).status_code == 200
+        assert c.get("/api/me").json()["role"] == "shifokor"
+        tasks = c.get("/api/tasks").json()
+        assert tasks and all(t["role"] == "shifokor" and t["patient"]["doctor"] == "Qosimova D." for t in tasks)
+        assert c.post("/api/me/password", json={"old": "demo", "new": "yangi-parol"}).status_code == 200
+        c.post("/api/logout")
+        assert c.get("/api/me").status_code == 401
+        assert c.post("/api/login", json={"username": "shifokor", "password": "yangi-parol"}).status_code == 200
+
+
+def test_phone_line_twiml_and_telegram_binding():
+    from app import telegram
+    from app.db import SessionLocal, User
+
+    with TestClient(app) as c:
+        p = c.get("/api/patients", params={"q": "Valiyev Amir"}).json()[0]
+        call = c.post(f"/api/patients/{p['id']}/calls", json={"scenario": "tashrif_tasdiq"}).json()
+        x = c.post(f"/api/tel/{call['token']}/step?i=0").text
+        assert "<Record" in x and "/audio/greeting" in x and "/audio/keldi" in x
+        assert "/audio/tushunarli" in c.post(f"/api/tel/{call['token']}/answer?i=0").text  # silence -> unclear -> next question
+        assert "<Hangup/>" in c.post(f"/api/tel/{call['token']}/answer?i=1").text
+        assert c.post(f"/api/calls/{call['id']}/dial").status_code == 404  # already finished
+    with SessionLocal() as db:
+        u = db.query(User).filter(User.username == "hamshira").first()
+        assert "Ulandi" in telegram.handle_update(db, {"message": {"text": "/start " + u.link_code, "chat": {"id": 777}}})
+        assert telegram.recipients(db, "hamshira", "yellow") == ["777"]
+        assert "topilmadi" in telegram.handle_update(db, {"message": {"text": "/start nope", "chat": {"id": 1}}})
+
+
+def test_frontend_script_is_complete():
+    """Every screen the router opens, and the helpers they share, must be defined in the bundle."""
+    import pathlib
+    import re
+
+    js = pathlib.Path("web/app.js").read_text(encoding="utf-8")
+    defined = set(re.findall(r"(?:function|const) (\w+)", js))
+    assert {"home", "patient", "tasks", "calls", "voice", "about", "profile", "showLogin", "showCall", "taskRow", "callRow", "flagLabel", "obsText"} <= defined

@@ -122,9 +122,24 @@ class AuditLog(Base):
     id = Column(Integer, primary_key=True)
     at = Column(DateTime, default=now, index=True)
     role = Column(String(20))
+    actor = Column(String(60))  # username of the account that did it
     action = Column(String(40))
     patient_id = Column(Integer, index=True)
     detail = Column(String(400))
+
+
+class User(Base):
+    """A personal staff account. The role comes from the account, not from a switch in the interface."""
+
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    username = Column(String(40), unique=True, index=True)
+    full_name = Column(String(120))
+    role = Column(String(20))  # rahbar | mutaxassis | shifokor | hamshira
+    doctor_name = Column(String(120))  # a family doctor sees the tasks of their own patients
+    password_hash = Column(String(200))
+    telegram_chat_id = Column(String(40))
+    link_code = Column(String(20))  # one-time code that binds a Telegram chat to the account
 
 
 class Meta(Base):
@@ -133,7 +148,7 @@ class Meta(Base):
     value = Column(String(200))
 
 
-SCHEMA_VERSION = "3"
+SCHEMA_VERSION = "4"
 
 
 def init_db():

@@ -1,16 +1,14 @@
 """Business logic: zones, tasks with a 24-hour timer, calls, visit verification."""
 
-import contextlib
 import json
 import os
 import secrets
 from datetime import datetime, timedelta
 
-import httpx
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
-from . import config, rules
+from . import config, rules, telegram
 from .db import AuditLog, Call, Notice, Observation, Patient, RiskEvent, Task
 
 HERE = os.path.dirname(__file__)
@@ -56,14 +54,12 @@ def merged(patient):
 
 
 def notify(db, patient, role, level, uz, ru):
+    """In-app notice for a role; urgent ones are also pushed to the bound Telegram chats."""
     db.add(Notice(patient_id=patient.id if patient else None, role=role, level=level, text_uz=uz[:400], text_ru=ru[:400]))
-    if config.TELEGRAM_BOT_TOKEN and config.TELEGRAM_CHAT_ID and level in ("red", "yellow"):
-        with contextlib.suppress(Exception):
-            httpx.post(
-                f"https://api.telegram.org/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage",
-                json={"chat_id": config.TELEGRAM_CHAT_ID, "text": ("🔴 " if level == "red" else "🟡 ") + uz},
-                timeout=5,
-            )
+    if level in ("red", "yellow") and telegram.enabled():
+        chats = set(telegram.recipients(db, role, level)) | ({config.TELEGRAM_CHAT_ID} if config.TELEGRAM_CHAT_ID else set())
+        for chat in chats:
+            telegram.send(chat, ("🔴 " if level == "red" else "🟡 ") + uz)
 
 
 def open_task(db, patient, type_, role, reason, hours):
@@ -116,8 +112,10 @@ def recompute(db, patient):
     return zone, reasons
 
 
-def audit(db, role, action, patient=None, detail=""):
-    db.add(AuditLog(role=(role or "-")[:20], action=action, patient_id=patient.id if patient else None, detail=str(detail)[:400], at=now()))
+def audit(db, who, action, patient=None, detail=""):
+    """`who` is a User account, or a plain role name for actions without a login (the patient in a call)."""
+    role, actor = (who.role, who.username) if hasattr(who, "username") else (str(who or "-"), None)
+    db.add(AuditLog(role=role[:20], actor=actor, action=action, patient_id=patient.id if patient else None, detail=str(detail)[:400], at=now()))
 
 
 class ConsentRequired(Exception):

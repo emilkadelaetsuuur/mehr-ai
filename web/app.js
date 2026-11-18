@@ -76,33 +76,61 @@
   function shell() {
     const r = (location.hash || "#/").split("/")[1] || "";
     const tab = (h, k) => `<a href="#/${h}" class="${r === h ? "on" : ""}">${t(k)}</a>`;
+    // with accounts on, the role comes from the signed-in user; the switch exists only in open demo mode
+    const who = S.meta?.auth
+      ? `<button id="me" title="${t("profile")}">${esc(S.me?.name || "")} · ${t("r_" + S.role)}</button>`
+      : `<select id="role" title="${t("role")}">${["rahbar", "mutaxassis", "shifokor", "hamshira"].map((x) => `<option value="${x}" ${S.role === x ? "selected" : ""}>${t("r_" + x)}</option>`).join("")}</select>`;
     $("#top").innerHTML = `<a class="logo" href="#/"><span class="dots"><i></i><i></i><i></i></span>Nigoh</a>
-      <span class="sub">${esc(S.meta?.district || "")}</span><span class="sp"></span>
-      <select id="role" title="${t("role")}">${["rahbar", "mutaxassis", "shifokor", "hamshira"].map((x) => `<option value="${x}" ${S.role === x ? "selected" : ""}>${t("r_" + x)}</option>`).join("")}</select>
-      <button id="lang">${S.lang === "uz" ? "RU" : "UZ"}</button>`;
+      <span class="sub">${esc(S.meta?.district || "")}</span><span class="sp"></span>${who}<button id="lang">${S.lang === "uz" ? "RU" : "UZ"}</button>`;
     $("#nav").innerHTML =
       tab("", "nav_home") + tab("ovoz", "nav_voice") + tab("vazifalar", "nav_tasks") + tab("qongiroqlar", "nav_calls") + tab("haqida", "nav_about");
-    $("#role").onchange = (e) => {
-      S.role = localStorage.role = e.target.value;
-      route();
-    };
+    if ($("#role"))
+      $("#role").onchange = (e) => {
+        S.role = localStorage.role = e.target.value;
+        route();
+      };
+    if ($("#me")) $("#me").onclick = profile;
     $("#lang").onclick = () => {
       S.lang = localStorage.lang = S.lang === "uz" ? "ru" : "uz";
       document.documentElement.lang = S.lang;
       route();
     };
   }
+  async function profile() {
+    const me = (S.me = await api("/me")),
+      tg = me.telegram;
+    modal(`<h2>${esc(me.name)}</h2><p class="small">${esc(me.username)} · ${t("r_" + me.role)}${me.doctor ? " · " + esc(me.doctor) : ""}</p>
+      <h3>${t("tg_h")}</h3><p>${tg.linked ? `<span class="badge z-green">${t("tg_on")}</span>` : tg.link ? `<a class="btn sm" target="_blank" rel="noopener" href="${tg.link}">${t("tg_link")}</a>` : `<span class="small">${t("tg_off")}</span>`}</p>
+      <h3 class="mt">${t("pw_h")}</h3><label>${t("pw_old")}</label><input id="po" type="password"><label class="mt">${t("pw_new")}</label><input id="pn" type="password">
+      <div class="row-b mt"><button class="btn" id="psave">${t("save")}</button><button class="btn ghost" id="pout">${t("logout")}</button><button class="btn ghost" data-close>${t("close")}</button></div>`);
+    $("#psave").onclick = async () => {
+      try {
+        await api("/me/password", { json: { old: $("#po").value, new: $("#pn").value } });
+        toast(t("pw_ok"));
+        closeModal();
+      } catch {
+        toast(t("wrong"));
+      }
+    };
+    $("#pout").onclick = async () => {
+      await fetch("/api/logout", { method: "POST" });
+      closeModal();
+      showLogin();
+    };
+  }
   function showLogin() {
     $("#nav").innerHTML = "";
     $("#top").innerHTML = `<span class="logo"><span class="dots"><i></i><i></i><i></i></span>Nigoh</span>`;
-    $("#app").innerHTML = `<div class="card" style="max-width:360px;margin:60px auto"><h2>${t("login_h")}</h2><p class="small">${t("tagline")}</p>
-      <label>${t("password")}</label><input id="pw" type="password" autofocus><div class="mt"><button class="btn" id="go">${t("enter")}</button></div></div>`;
+    const accounts = S.meta?.accounts || [];
+    $("#app").innerHTML = `<div class="card" style="max-width:380px;margin:60px auto"><h2>${t("login_h")}</h2><p class="small">${t("tagline")}</p>
+      <label>${t("account")}</label><select id="un">${accounts.map((a) => `<option value="${esc(a.username)}">${esc(a.name)} (${esc(a.username)})</option>`).join("")}</select>
+      <label class="mt">${t("password")}</label><input id="pw" type="password" autofocus><div class="mt"><button class="btn" id="go">${t("enter")}</button></div></div>`;
     const go = async () => {
       try {
         await fetch("/api/login", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ password: $("#pw").value }),
+          body: JSON.stringify({ username: $("#un").value, password: $("#pw").value }),
         }).then((r) => {
           if (!r.ok) throw 0;
         });
@@ -242,16 +270,26 @@
                   `<div class="small">${esc(k)}: <b>${a.value === "yes" ? t("yes") : a.value === "no" ? t("no") : (a.value ?? t("unclear"))}</b>${a.transcript ? ` — <span class="quote">${esc(a.transcript)}</span>` : ""}</div>`,
               )
               .join("")
-          : `<div class="mt"><button class="btn sm ghost" data-call='${esc(JSON.stringify({ url: c.url }))}'>${t("begin")}</button></div>`
+          : `<div class="mt"><button class="btn sm ghost" data-call='${esc(JSON.stringify({ url: c.url, id: c.id }))}'>${t("begin")}</button></div>`
       }</div>`;
-  function showCall(url, title, text) {
+  function showCall(url, title, text, id) {
+    const phone = S.meta?.telephony && id ? `<button class="btn" id="dial">${t("dial")}</button>` : "";
     modal(`<h2>${title || t("call_qr")}</h2><p class="small">${text || t("call_qr_text")}</p><div class="center"><img src="/api/qr?u=${encodeURIComponent(url)}" alt="QR" style="width:230px;max-width:100%"></div>
-      <div class="row-b mt"><a class="btn" href="${url}" target="_blank" rel="noopener">${t("open_here")}</a><button class="btn ghost" id="cp">${t("copy")}</button><button class="btn ghost" data-close>${t("close")}</button></div>`);
+      <div class="row-b mt">${phone}<a class="btn ${phone ? "ghost" : ""}" href="${url}" target="_blank" rel="noopener">${t("open_here")}</a><button class="btn ghost" id="cp">${t("copy")}</button><button class="btn ghost" data-close>${t("close")}</button></div>`);
     $("#cp").onclick = () => navigator.clipboard?.writeText(url).then(() => toast(t("copied")));
+    if ($("#dial"))
+      $("#dial").onclick = async () => {
+        try {
+          await api(`/calls/${id}/dial`, { method: "POST" });
+          toast(t("dial_ok"));
+        } catch (e) {
+          toast(e.message);
+        }
+      };
   }
   async function markDone(id, after) {
     const r = await api(`/tasks/${id}/done`, { json: {} });
-    if (r.call) showCall(r.call.url, t("verify_title"), t("verify_text"));
+    if (r.call) showCall(r.call.url, t("verify_title"), t("verify_text"), r.call.id);
     else toast(t("no_verify"), 5000);
     after && after();
   }
@@ -309,7 +347,7 @@
         </div>
         <div class="grid" style="align-content:start"><div><h2>${t("tasks")}</h2>${p.tasks.map((x) => taskRow(x)).join("") || `<p class="small">${t("empty")}</p>`}</div>
           <div><h2>${t("calls")}</h2>${p.calls.map((c) => callRow(c)).join("") || `<p class="small">${t("empty")}</p>`}</div>
-          <div class="card"><h2>${t("audit_h")}</h2><div class="feed">${p.audit.map((a) => `<div><span class="badge z-gray">${esc(t("r_" + a.role) === "r_" + a.role ? a.role : t("r_" + a.role))}</span> ${esc(a.action)} <span class="small">· ${esc(a.detail || "")} · ${dt(a.at)}</span></div>`).join("") || `<span class="small">${t("empty")}</span>`}</div></div></div>
+          <div class="card"><h2>${t("audit_h")}</h2><div class="feed">${p.audit.map((a) => `<div><span class="badge z-gray">${esc(a.actor || (t("r_" + a.role) === "r_" + a.role ? a.role : t("r_" + a.role)))}</span> ${esc(a.action)} <span class="small">· ${esc(a.detail || "")} · ${dt(a.at)}</span></div>`).join("") || `<span class="small">${t("empty")}</span>`}</div></div></div>
       </div>`;
     $("#bsave").onclick = async () => {
       const body = {};
@@ -340,14 +378,14 @@
         <div class="row-b mt"><button class="btn" id="mk">${t("begin")}</button><button class="btn ghost" data-close>${t("close")}</button></div>`);
       $("#mk").onclick = async () => {
         const c = await api(`/patients/${id}/calls`, { json: { scenario: $("#sc").value, lang: $("#cl").value } });
-        showCall(c.url);
+        showCall(c.url, null, null, c.id);
       };
     };
     $("#app").onclick = (e) => {
       const d = e.target.closest("[data-done]"),
         c = e.target.closest("[data-call]");
       if (d) markDone(d.dataset.done, () => patient(id));
-      else if (c) showCall(JSON.parse(c.dataset.call).url);
+      else if (c) showCall(JSON.parse(c.dataset.call).url, null, null, JSON.parse(c.dataset.call).id);
     };
     S.timers.push(
       setInterval(() => {
@@ -359,7 +397,7 @@
   /* ---------- tasks & calls ---------- */
   async function tasks() {
     const mine = S.role !== "rahbar";
-    const rows = await api("/tasks" + (mine ? "?role=" + S.role : ""));
+    const rows = await api("/tasks");
     const open = rows.filter((x) => x.status === "ochiq"),
       rest = rows.filter((x) => x.status !== "ochiq").slice(0, 30);
     $("#app").innerHTML =
@@ -380,7 +418,7 @@
       <div><h2>${t("c_rejalashtirilgan")} · ${plan.length}</h2>${plan.map((c) => callRow(c, 1)).join("") || `<p class="small">${t("empty")}</p>`}</div></div>`;
     $("#app").onclick = (e) => {
       const c = e.target.closest("[data-call]");
-      if (c) showCall(JSON.parse(c.dataset.call).url);
+      if (c) showCall(JSON.parse(c.dataset.call).url, null, null, JSON.parse(c.dataset.call).id);
     };
     S.timers.push(setInterval(() => !document.querySelector(".modal") && calls(), 12000));
   }
@@ -603,7 +641,8 @@
     document.documentElement.lang = S.lang;
     S.meta = await fetch("/api/meta").then((r) => r.json());
     try {
-      await api("/me");
+      S.me = await api("/me");
+      if (S.meta.auth) S.role = S.me.role;
     } catch {
       return;
     }
