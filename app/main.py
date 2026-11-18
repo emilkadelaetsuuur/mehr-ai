@@ -38,22 +38,29 @@ BUILD = _build()
 # reloaded keeps the old code). Such a tab is told to sign in again. The interface, old or new, answers that
 # by dropping all its timers and showing the sign-in form, so the flood stops and a reload brings the new code.
 LISTS = ("/api/calls", "/api/patients", "/api/dashboard", "/api/tasks")
-RUNAWAY, WINDOW = 40, 10  # more than this many requests for one list from one browser within these seconds
-_asked = {}  # (browser, list) -> [when the count began, how many since]
+RUNAWAY, WINDOW = 40, 10  # more than this many requests for one list from one browser within these seconds...
+CLOSED = 60  # ...closes that list to that browser for this long
+_asked = {}  # (browser, list) -> [when the count began, how many since, closed until]
 
 
 def runaway(key, now=None):
-    """True when one browser asks for the same list far more often than any screen does."""
+    """True when one browser asks for the same list far more often than any screen does, and for a minute
+    after that. The minute matters: an old tab drops its timers on the first refusal, but a reply that was
+    already on its way starts one more; that one must meet a refusal too, or the flood grows back."""
     now = time.monotonic() if now is None else now
     slot = _asked.get(key)
+    if slot and now < slot[2]:
+        return True
     if not slot or now - slot[0] >= WINDOW:
         if len(_asked) > 2000:
             _asked.clear()
-        slot = _asked[key] = [now, 0]
+        slot = _asked[key] = [now, 0, 0.0]
     slot[1] += 1
-    if slot[1] == RUNAWAY + 1:
-        log.warning("a runaway tab asked for %s more than %s times in %ss: told to sign in again", key[1], RUNAWAY, WINDOW)
-    return slot[1] > RUNAWAY
+    if slot[1] <= RUNAWAY:
+        return False
+    slot[2] = now + CLOSED
+    log.warning("a runaway tab asked for %s more than %s times in %ss: told to sign in again", key[1], RUNAWAY, WINDOW)
+    return True
 
 
 def scheduler():
