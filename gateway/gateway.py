@@ -44,8 +44,10 @@ def say(*words):
 
 class Rig:
     def __init__(self, a):
-        self.a = a
-        self.key = open(a.key, encoding="utf-8").read().strip() if os.path.exists(a.key) else ""
+        self.a, self.key = a, ""
+        if os.path.exists(a.key):
+            with open(a.key, encoding="utf-8") as f:
+                self.key = f.read().strip()
 
     # ---------- the server
 

@@ -11,7 +11,17 @@ os.environ["DEMO_PASSWORD"] = ""
 # The suite also runs inside the production container: it must not inherit that environment
 # (an https PUBLIC_URL makes the session cookie Secure; real tokens would reach real services).
 os.environ["PUBLIC_URL"] = "http://testserver"
-for _k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
+for _k in (
+    "TELEGRAM_BOT_TOKEN",
+    "TELEGRAM_CHAT_ID",
+    "TWILIO_ACCOUNT_SID",
+    "TWILIO_AUTH_TOKEN",
+    "TWILIO_FROM",
+    "ANTHROPIC_API_KEY",
+    "ANTHROPIC_AUTH_TOKEN",
+    "GATEWAY_KEY",
+    "CLINIC_PHONE",
+):
     os.environ[_k] = ""
 for _k in ("ANTHROPIC_BASE_URL", "CLAUDE_MODEL", "CLAUDE_LANGS", "CLAUDE_CLOSING", "CLAUDE_TIMEOUT", "VOICELAB_CLOSING"):
     os.environ.pop(_k, None)  # the server's choice of model and languages is not what the tests are about
