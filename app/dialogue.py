@@ -11,6 +11,55 @@ The Uzbek texts were written by a non-native speaker and must be read by one bef
 CALLBACK_MINUTES = 30  # named aloud in `operator_ok`: change the phrase together with the number
 
 SAY = {
+    # The call opens by asking whether the right person picked up (app/talk.py words that question, with her name).
+    "who_retry": {
+        "uz": "Kechirasiz, yaxshi eshitmadim. Bu sizmisiz? Iltimos, «ha» yoki «yo'q» deng.",
+        "ru": "Простите, я не расслышала. Это вы? Пожалуйста, скажите «да» или «нет».",
+    },
+    # someone else picked up: nothing about health is said, the call ends and is made again later
+    "who_no": {
+        "uz": "Tushunarli, bezovta qilganim uchun uzr. Iltimos, unga poliklinikadan qo'ng'iroq bo'lganini aytib qo'ying. "
+        "Keyinroq qayta qo'ng'iroq qilamiz. Sog' bo'ling!",
+        "ru": "Понятно, извините за беспокойство. Пожалуйста, передайте ей, что звонили из поликлиники. Мы перезвоним позже. Всего доброго!",
+    },
+    "who_fail": {
+        "uz": "Kechirasiz, sizni eshita olmadim. Keyinroq qayta qo'ng'iroq qilaman. Sog' bo'ling!",
+        "ru": "Простите, я вас не слышу. Перезвоню позже. Всего доброго!",
+    },
+    # Her own questions, after the scenario's. An answer comes from the leaflet (app/advice.json) and is worded
+    # for this call; these are the fixed phrases around it.
+    "ask_q": {
+        "uz": "Endi sizni tinglayman. Sog'lig'ingiz, ovqatlanish yoki chaqaloq parvarishi haqida savolingiz bormi? "
+        "Yoki shifokoringizga aytmoqchi bo'lgan gapingiz bo'lsa, ayting. Bo'lmasa, «yo'q» deng.",
+        "ru": "Теперь я слушаю вас. Есть ли у вас вопрос о самочувствии, питании или уходе за ребёнком? "
+        "Или скажите, что передать вашему врачу. Если вопросов нет, скажите «нет».",
+    },
+    "ask_more": {"uz": "Yana savolingiz bormi?", "ru": "Есть ли у вас ещё вопросы?"},
+    "ask_go": {"uz": "Marhamat, savolingizni ayting.", "ru": "Пожалуйста, говорите, я слушаю."},
+    "ask_retry": {
+        "uz": "Kechirasiz, eshitmadim. Savolingizni yana bir marta ayting yoki «yo'q» deng.",
+        "ru": "Простите, я не расслышала. Повторите вопрос или скажите «нет».",
+    },
+    # spoken while the answer is being found, so she does not wait in silence
+    "ask_wait": {"uz": "Bir soniya, o'ylab ko'ray.", "ru": "Секунду, сейчас отвечу."},
+    # the leaflet has no answer, or the question is about her own treatment: it goes to a person
+    "ask_doctor": {
+        "uz": "Bu savolga shifokoringiz javob bergani ma'qul. Savolingizni unga yetkazdim, u siz bilan bog'lanadi.",
+        "ru": "На этот вопрос лучше ответит ваш врач. Я передала ему ваш вопрос, он свяжется с вами.",
+    },
+    "ask_nurse": {
+        "uz": "Bu savolga tibbiyot xodimi javob bergani ma'qul. Savolingizni patronaj hamshirasiga yetkazdim, u siz bilan bog'lanadi.",
+        "ru": "На этот вопрос лучше ответит медицинский работник. Я передала ваш вопрос патронажной медсестре, она свяжется с вами.",
+    },
+    # she named a warning sign: no model is asked, the rules have already raised the alarm
+    "ask_alarm": {
+        "uz": "Aytganlaringiz xavfli belgi bo'lishi mumkin. Iltimos, kutmasdan bir yuz uch raqamiga qo'ng'iroq qiling. "
+        "Shifokoringizga shoshilinch xabar yubordim.",
+        "ru": "То, что вы описали, может быть опасным признаком. Пожалуйста, не ждите и позвоните по номеру сто три. "
+        "Вашему врачу отправлено срочное сообщение.",
+    },
+    # after an answer to a question in which she also named a complaint
+    "ask_told": {"uz": "Aytganlaringizni shifokoringizga ham yetkazdim.", "ru": "Я также передала ваши слова вашему врачу."},
     # after the greeting: how to reach a person
     "hint": {
         "uz": "Agar jonli xodim bilan gaplashmoqchi bo'lsangiz, istalgan payt «operator» deng.",

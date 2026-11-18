@@ -610,6 +610,109 @@ def test_a_phone_with_a_sim_card_as_the_line(monkeypatch):
         simline._seen["at"] = 0  # the rig is gone
 
 
+def test_a_call_names_the_patient_and_answers_her_questions_from_the_leaflet(monkeypatch):
+    """The call greets the patient by name and goes on only after her "yes". Her own question is answered
+    when a model words an answer from the leaflet and names the notes it used; anything else goes to her
+    doctor as a message. A warning sign in her words never waits for a model."""
+    import re
+    import time
+    from types import SimpleNamespace
+
+    from app import closing, talk, voicelab
+
+    assert talk.spoken("Sodiqova Dilnoza", "uz") == "Dilnoza Sodiqova" and talk.spoken("Sodiqova Dilnoza", "ru") == "Дилноза Содикова"
+    assert talk.cyrillic("Jo'rayev Elyor") == "Джураев Элёр" and talk.cyrillic("O'g'iloy") == "Угилой"
+    assert talk.short("Yo'q, rahmat") == "none" and talk.short("Ha, savolim bor") == "go" and talk.short("Молока нет") is None
+    # every note names its document and is written for the voice: no digits
+    assert all(n["src"] in talk.ADVICE["sources"] and n["who"] and not re.search(r"\d", n["uz"] + n["ru"]) for n in talk.ADVICE["notes"])
+    assert talk.notes("homilador") and talk.notes("chaqaloq") and not talk.notes("boshqa")
+
+    baby, mother = SimpleNamespace(kind="chaqaloq", mother_id=7, full_name="Valiyev Amir"), SimpleNamespace(full_name="Valiyeva Madina")
+    db = SimpleNamespace(get=lambda model, pk: mother if pk == 7 else None)
+    hello, intro = talk.opening(db, SimpleNamespace(patient=baby, lang="uz", scenario="chaqaloq_30kun"))  # a call about a newborn is a call to the mother
+    assert "Men Madina Valiyeva bilan gaplashyapmanmi?" in hello and intro.startswith("Rahmat, Madina opa. Chaqalog'ingiz haqida")
+    baby.mother_id = None
+    assert "Amir Valiyev — sizning farzandingizmi?" in talk.opening(db, SimpleNamespace(patient=baby, lang="uz", scenario="chaqaloq_30kun"))[0]
+
+    with TestClient(app) as c:
+        card = {"full_name": "Karimova Zilola", "birth_year": 1996, "kind": "homilador", "doctor": "Qosimova D.", "phone": "+998 90 111-22-33"}
+        p = c.post("/api/patients/confirm", json={"fields": card, "consent": True}).json()
+
+        def call(lang=None):
+            return c.post(f"/api/patients/{p['id']}/calls", json={"scenario": "homilador", **({"lang": lang} if lang else {})}).json()
+
+        def ask(k, text):
+            return c.post(f"/api/call/{k['token']}/ask", data={"text": text}).json()
+
+        def row(k):
+            return next(x for x in c.get("/api/calls").json() if x["id"] == k["id"])
+
+        def messages():
+            return [t for t in c.get("/api/tasks", headers={"X-Role": "shifokor"}).json() if t["patient"]["id"] == p["id"] and t["type"] == "murojaat"]
+
+        k = call()
+        info = c.get(f"/api/call/{k['token']}").json()
+        assert "Men Zilola Karimova bilan gaplashyapmanmi?" in info["hello"] and info["intro"].startswith("Rahmat, Zilola opa. Sog'lig'ingiz haqida")
+        ru = c.get(f"/api/call/{call('ru')['token']}").json()
+        assert "вы — Зилола Каримова?" in ru["hello"] and ru["intro"].startswith("Спасибо, Зилола. Задам")
+
+        # somebody else picked up: nothing more is said, the call stays planned and counts as an attempt
+        assert c.post(f"/api/call/{k['token']}/identity", data={"value": "no"}).json()["value"] == "no"
+        assert row(k)["status"] == "rejalashtirilgan" and row(k)["attempts"] == 1 and row(k)["answers"]["shaxs"]["value"] == "no"
+        assert c.post(f"/api/call/{k['token']}/identity", data={"value": "yes"}).json()["value"] == "yes"
+        assert row(k)["status"] == "jarayonda" and row(k)["answers"]["shaxs"]["value"] == "yes"
+
+        # replies that are not questions
+        assert ask(k, "Yo'q, rahmat")["kind"] == "none" and ask(k, "Operator bilan gaplashmoqchiman")["kind"] == "operator" and ask(k, " ")["kind"] == "unclear"
+        # no model at hand: the machine does not answer, the question goes to her own doctor
+        r = ask(k, "Homiladorlikda qanday ovqatlanishim kerak?")
+        assert r["kind"] == "doctor" and r["to"] == "shifokor" and r["doctor"] == "Qosimova D." and r["answer"] is None and len(messages()) == 1
+
+        # a model words the answer from the leaflet and names the note it used
+        seen = []
+        good = "[1] Ovqatingiz xilma-xil bo'lsin: sabzavot, meva, go'sht yoki baliq, tuxum va sut mahsulotlari. Kam-kamdan, tez-tez ovqatlaning."
+        monkeypatch.setattr(voicelab, "enabled", lambda: True)
+        monkeypatch.setattr(voicelab, "chat", lambda messages, **kw: seen.append(messages) or good)
+        r = ask(k, "Homiladorlikda qanday ovqatlanishim kerak?")
+        assert r["kind"] == "answer" and r["by"] == "voicelab" and r["answer"].startswith("Ovqatingiz") and r["to"] is None
+        assert r["parts"] == closing.sentences(r["answer"]) and r["source"] == [talk.ADVICE["sources"]["anc"]["uz"]]
+        system, question = seen[-1][0]["content"], seen[-1][1]["content"]
+        assert "1. Homiladorlikda ovqat" in system and "a pregnant woman" in system and "ovqatlanishim" in question
+        assert not any(secret in system + question for secret in ("Zilola", "Karimova", "111-22-33", "1996"))  # the model is not told who she is
+        assert len(messages()) == 1  # answered: nothing new for the doctor
+        with monkeypatch.context() as m:  # she is waiting: the first acceptable answer wins, a slow writer is not waited for
+            m.setattr(closing, "enabled", lambda: True)
+            m.setattr(closing, "ask", lambda text, system=None: time.sleep(2) or good)
+            t0 = time.time()
+            assert talk.compose("homilador", "uz", "Qanday ovqatlanishim kerak?")[1] == "voicelab" and time.time() - t0 < 1.5
+
+        # an answer that names no note, carries digits, or says "not in the leaflet" is never spoken
+        for bad in (
+            "Ovqatingiz xilma-xil bo'lsin, sabzavot va meva yeng, kam-kamdan va tez-tez ovqatlaning.",
+            "[1] Kuniga 3 marta ovqatlaning va 2 litr suv iching, bu siz uchun juda muhim narsa.",
+            "TOPILMADI",
+            None,
+        ):
+            monkeypatch.setattr(voicelab, "chat", lambda messages, bad=bad, **kw: bad)
+            r = ask(k, "Qaysi vitaminni ichsam bo'ladi?")
+            assert r["kind"] == "doctor" and r["answer"] is None
+        said = row(k)["answers"]["suhbat"]["items"]  # the whole exchange stays in the call's record
+        assert [x["kind"] for x in said] == ["doctor", "answer"] + ["doctor"] * 4 and said[1]["notes"] == ["ovqat"] and said[1]["by"] == "voicelab"
+        assert ask(k, "Yana bitta savolim bor edi, aytsam maylimi?")["kind"] == "none"  # the lid on questions in one call
+
+        # a warning sign in her words: no model is asked, the alarm goes the usual red road
+        asked = []
+        monkeypatch.setattr(talk, "compose", lambda *a: asked.append(a) or (None, None, []))
+        k = call()
+        r = ask(k, "Ertalabdan beri qon ketyapti, nima qilay?")
+        assert r["kind"] == "alarm" and r["to"] == "shifokor" and not asked
+        for q in c.get(f"/api/call/{k['token']}").json()["questions"]:
+            c.post(f"/api/call/{k['token']}/answer", data={"qid": q["id"], "value": "no"})
+        res = c.post(f"/api/call/{k['token']}/finish").json()
+        assert res["alert"] and res["zone"] == "red" and "qon_ketish" in res["flags"]
+        assert c.post(f"/api/call/{k['token']}/ask", data={"text": "yana bir savol"}).status_code == 400  # the call is over
+
+
 def test_frontend_script_is_complete():
     """Every screen the router opens, and the helpers they share, must be defined in the bundle."""
     import pathlib

@@ -298,7 +298,10 @@ def appeal(db, call, text):
         f"MUROJAAT: {p.full_name} ({p.mahalla}, {p.phone}): {text[:220]}",
         f"ОБРАЩЕНИЕ: {p.full_name} ({p.mahalla}, {p.phone}): {text[:220]}",
     )
-    call.answers = {**(call.answers or {}), "murojaat": {"value": "yes", "transcript": text, "complaints": found, "to": role}}
+    before = (call.answers or {}).get("murojaat") or {}  # a call may carry several messages: none of them is lost
+    said = " | ".join(x for x in (before.get("transcript"), text) if x)
+    signs = (before.get("complaints") or []) + [c for c in found if c not in (before.get("complaints") or [])]
+    call.answers = {**(call.answers or {}), "murojaat": {"value": "yes", "transcript": said, "complaints": signs, "to": role}}
     audit(db, "bemor", "appeal_left", p, f"-> {role} {name}".strip())
     return {"role": role, "doctor": name, "urgent": urgent, "task": t}
 
@@ -470,6 +473,14 @@ def call_no_answer(db, call):
             f"{p.full_name}: не ответила на 3 звонка — нужен визит на дом.",
         )
     return call.attempts
+
+
+def wrong_person(db, call, said=""):
+    """Somebody else picked up, or the person did not say who she is. Nothing about health was said; the
+    call stays planned and counts as an attempt, so three of them still bring the nurse to the door."""
+    call.answers = {**(call.answers or {}), "shaxs": {"value": "no", "transcript": said[:200]}}
+    audit(db, "bemor", "call_wrong_person", call.patient, call.scenario)
+    return call_no_answer(db, call)
 
 
 def sweep(db):

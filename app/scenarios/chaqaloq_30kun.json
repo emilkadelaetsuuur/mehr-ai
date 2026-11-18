@@ -15,6 +15,10 @@
   "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. Chaqalog'ingiz haqida oltita qisqa savol beraman. Savollarga «ha» yoki «yo'q» deb javob bering.",
   "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам шесть коротких вопросов о вашем малыше. Отвечайте «да» или «нет»."
  },
+ "intro": {
+  "uz": "Chaqalog'ingiz haqida oltita qisqa savol beraman. Savollarga «ha» yoki «yo'q» deb javob bering.",
+  "ru": "Задам шесть коротких вопросов о вашем малыше. Отвечайте «да» или «нет»."
+ },
  "questions": [
   {
    "id": "emish",

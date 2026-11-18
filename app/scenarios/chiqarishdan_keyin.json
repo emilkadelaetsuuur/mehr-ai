@@ -9,6 +9,10 @@
   "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. Shifoxonadan keyingi ahvolingiz haqida to'rtta savol beraman. «Ha» yoki «yo'q» deb javob bering.",
   "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам четыре вопроса о самочувствии после выписки. Отвечайте «да» или «нет»."
  },
+ "intro": {
+  "uz": "Shifoxonadan keyingi ahvolingiz haqida to'rtta savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Задам четыре вопроса о самочувствии после выписки. Отвечайте «да» или «нет»."
+ },
  "questions": [
   {
    "id": "isitma",

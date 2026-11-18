@@ -9,6 +9,10 @@
   "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. Shifokor tashrifi haqida ikkita savol beraman. «Ha» yoki «yo'q» deb javob bering.",
   "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам два вопроса о визите врача. Отвечайте «да» или «нет»."
  },
+ "intro": {
+  "uz": "Shifokor tashrifi haqida ikkita savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Задам два вопроса о визите врача. Отвечайте «да» или «нет»."
+ },
  "questions": [
   {
    "id": "keldi",

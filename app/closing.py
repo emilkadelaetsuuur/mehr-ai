@@ -17,7 +17,7 @@ import logging
 import os
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from concurrent.futures import TimeoutError as Late
 
 from . import config, core, rules, voicelab
@@ -118,13 +118,13 @@ def direct():
     return not base or "api.anthropic.com" in base
 
 
-def _send(client, text):
+def _send(client, text, system=None):
     import anthropic
 
     common = {
         "model": config.CLAUDE_MODEL,
         "max_tokens": 2000,  # the answer is three sentences; the room is for the model's own thinking
-        "system": SYSTEM,
+        "system": system or SYSTEM,
         "messages": [{"role": "user", "content": text}],
     }
     effort = {"output_config": {"effort": "low"}}
@@ -145,14 +145,15 @@ def _send(client, text):
     return client.messages.create(**common)
 
 
-def ask(text):
-    """One request to Claude. Returns its words, or None if it declined, ran out of room or the call failed."""
+def ask(text, system=None):
+    """One request to Claude (the closing words unless another `system` is given). Returns its words, or None
+    if it declined, ran out of room or the call failed."""
     import anthropic  # imported here so the application starts and works without the package
 
     if _state["client"] is None:  # the key and, behind a gateway, its address come from the environment
         _state["client"] = anthropic.Anthropic(timeout=config.CLAUDE_TIMEOUT, max_retries=0)  # a caller is waiting: no retries
     try:
-        r = _send(_state["client"], text)
+        r = _send(_state["client"], text, system)
     except anthropic.RateLimitError:
         log.warning("claude: rate limited")
         return None
@@ -183,9 +184,9 @@ def acceptable(text, lang, alarm):
     return None
 
 
-def ask_voicelab(text):
+def ask_voicelab(text, system=None):
     """The same request to the VoiceLab language model: quick in Uzbek, and it runs in Uzbekistan."""
-    return voicelab.chat([{"role": "system", "content": SYSTEM}, {"role": "user", "content": text}], max_tokens=220, temperature=0.3, timeout=8)
+    return voicelab.chat([{"role": "system", "content": system or SYSTEM}, {"role": "user", "content": text}], max_tokens=220, temperature=0.3, timeout=8)
 
 
 def writers(lang):
@@ -210,31 +211,66 @@ def sentences(text):
     return out
 
 
+def _words(name, job, seconds, check):
+    """One writer's text, if it came within `seconds` and passed the check; otherwise None and a line in the log."""
+    try:
+        text = job.result(timeout=seconds)
+    except Late:
+        log.warning("%s: no words in time", name)
+        return None
+    except ImportError:
+        log.warning("%s: the anthropic package is not installed", name)
+        return None
+    except Exception:  # anything unexpected must not break a call
+        log.exception("%s: writing failed", name)
+        return None
+    if not text:
+        return None
+    text = re.sub("[‘’ʻʼ`]", "'", text)  # one spelling of the Uzbek apostrophe, as in the scenario texts
+    text = re.sub(r"\s+", " ", text).strip().strip('"«»“”')
+    why = check(text)
+    if why is not None:
+        log.warning("%s: words rejected (%s)", name, why)
+    return text if why is None else None
+
+
+def write(lang, request, check, system=None, fastest=False):
+    """Words from a language model for a caller who is waiting: (text, who wrote it), or (None, None).
+
+    All writers allowed in this language start at once and each has its time by the clock from that moment,
+    whatever its own network timeouts do: the wait is the longest single limit, not the sum of them.
+    `check` returns the reason a text is rejected, or None. The closing words go to the preferred writer
+    first; with `fastest`, whoever gives an acceptable text first is used (an answer in the middle of a
+    conversation). `system` replaces the instructions for the closing words."""
+    started = time.monotonic()
+    jobs = [(name, _pools[name].submit(*((fn, request) if system is None else (fn, request, system))), seconds) for name, fn, seconds in writers(lang)]
+
+    def left(seconds):
+        return max(0.0, seconds - (time.monotonic() - started))
+
+    if fastest:
+        waiting = {job: name for name, job, _ in jobs}
+        longest = max((seconds for _, _, seconds in jobs), default=0)
+        while waiting:
+            done, _ = wait(waiting, timeout=left(longest), return_when=FIRST_COMPLETED)
+            if not done:
+                log.warning("%s: no words in time", ", ".join(waiting.values()))
+                break
+            for job in done:
+                name = waiting.pop(job)
+                text = _words(name, job, 0, check)
+                if text:
+                    return text, name
+        return None, None
+    for name, job, seconds in jobs:  # in order of preference
+        text = _words(name, job, left(seconds), check)
+        if text:
+            return text, name
+    return None, None
+
+
 def compose(call, res):
     """Closing words for a finished call and who wrote them: 'claude', 'voicelab', or 'shablon' for the fixed phrase."""
     lang = call.lang or "uz"
-    request, started = brief(call, res), time.monotonic()
-    # A caller is on the line. All writers start at once and each has its time by the clock from that moment,
-    # whatever its own network timeouts do: the wait is the longest single limit, not the sum of them.
-    jobs = [(name, _pools[name].submit(write, request), seconds) for name, write, seconds in writers(lang)]
-    for name, job, seconds in jobs:  # in order of preference
-        try:
-            text = job.result(timeout=max(0.0, seconds - (time.monotonic() - started)))
-        except Late:
-            log.warning("%s: no closing within %gs", name, seconds)
-            continue
-        except ImportError:
-            log.warning("%s: the anthropic package is not installed", name)
-            continue
-        except Exception:  # anything unexpected must not break the end of a call
-            log.exception("%s: closing failed", name)
-            continue
-        if not text:
-            continue
-        text = re.sub("[‘’ʻʼ`]", "'", text)  # one spelling of the Uzbek apostrophe, as in the scenario texts
-        text = re.sub(r"\s+", " ", text).strip().strip('"«»“”')
-        why = acceptable(text, lang, outcome(call, res) == "alarm")
-        if why is None:
-            return text, name
-        log.warning("%s: closing rejected (%s)", name, why)
-    return fixed(call, res), "shablon"
+    text, by = write(lang, brief(call, res), lambda t: acceptable(t, lang, outcome(call, res) == "alarm"))
+    return (text, by) if text else (fixed(call, res), "shablon")

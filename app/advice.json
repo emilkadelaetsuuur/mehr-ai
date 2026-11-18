@@ -1,0 +1,211 @@
+{
+ "note": "The patient leaflet the AI call may answer from, and nothing else. Each note names the document it follows. Before real use every note must be read and approved by the polyclinic's doctor and checked against the national clinical protocols; the Uzbek wording must be read by a native speaker.",
+ "sources": {
+  "anc": {
+   "uz": "JSST: homiladorlikdagi parvarish bo'yicha tavsiyalar (2016)",
+   "ru": "ВОЗ: рекомендации по дородовой помощи (2016)",
+   "title": "WHO recommendations on antenatal care for a positive pregnancy experience (2016)"
+  },
+  "pnc": {
+   "uz": "JSST: tug'ruqdan keyingi davrda ona va chaqaloq parvarishi bo'yicha tavsiyalar (2022)",
+   "ru": "ВОЗ: рекомендации по уходу за матерью и новорождённым после родов (2022)",
+   "title": "WHO recommendations on maternal and newborn care for a positive postnatal experience (2022)"
+  },
+  "pcpnc": {
+   "uz": "JSST: homiladorlik, tug'ruq, tug'ruqdan keyingi davr va chaqaloq parvarishi bo'yicha amaliy qo'llanma (2015)",
+   "ru": "ВОЗ: практическое руководство по помощи при беременности, в родах, после родов и новорождённому (2015)",
+   "title": "WHO. Pregnancy, childbirth, postpartum and newborn care: a guide for essential practice, 3rd edition (2015)"
+  }
+ },
+ "notes": [
+  {
+   "id": "ovqat",
+   "who": ["homilador"],
+   "src": "anc",
+   "uz": "Homiladorlikda ovqat xilma-xil bo'lishi kerak: sabzavot, meva, go'sht yoki baliq, tuxum, sut mahsulotlari, dukkaklilar va yorma. Kam-kamdan, kuniga bir necha marta ovqatlaning va yetarlicha suv iching.",
+   "ru": "Питание при беременности должно быть разнообразным: овощи, фрукты, мясо или рыба, яйца, молочные продукты, бобовые и крупы. Ешьте понемногу несколько раз в день и пейте достаточно воды."
+  },
+  {
+   "id": "temir",
+   "who": ["homilador"],
+   "src": "anc",
+   "uz": "Temir va foliy kislotasi preparatlarini shifokoringiz tayinlagan tartibda iching. Ularni o'zingizcha to'xtatmang va miqdorini o'zgartirmang.",
+   "ru": "Препараты железа и фолиевой кислоты принимайте так, как назначил ваш врач. Не отменяйте их и не меняйте количество сами."
+  },
+  {
+   "id": "harakat",
+   "who": ["homilador"],
+   "src": "anc",
+   "uz": "Agar shifokor taqiqlamagan bo'lsa, har kuni yengil jismoniy harakat, masalan, piyoda yurish foydali. Og'ir yuk ko'tarmang.",
+   "ru": "Если врач не запретил, полезна ежедневная лёгкая активность, например ходьба. Не поднимайте тяжести."
+  },
+  {
+   "id": "kongil",
+   "who": ["homilador"],
+   "src": "anc",
+   "uz": "Ko'ngil aynishida kam-kamdan va tez-tez ovqatlanish, yog'li taomlar va o'tkir hidlardan saqlanish yordam beradi. Agar qusish tez-tez takrorlansa yoki suv icha olmasangiz, shifokorga murojaat qiling.",
+   "ru": "При тошноте помогает есть понемногу и часто, избегать жирной пищи и резких запахов. Если рвота повторяется часто или вы не можете пить, обратитесь к врачу."
+  },
+  {
+   "id": "jigildon",
+   "who": ["homilador"],
+   "src": "anc",
+   "uz": "Jig'ildon qaynashida kam-kamdan ovqatlaning, yog'li va achchiq taomlarni kamaytiring, ovqatdan keyin darrov yotmang. Dorini faqat shifokor maslahati bilan iching.",
+   "ru": "При изжоге ешьте небольшими порциями, меньше жирного и острого, не ложитесь сразу после еды. Лекарства принимайте только по совету врача."
+  },
+  {
+   "id": "ich_qotishi",
+   "who": ["homilador"],
+   "src": "anc",
+   "uz": "Ich qotishida ko'proq suv iching, sabzavot, meva va kepakli non yeng.",
+   "ru": "При запорах пейте больше воды, ешьте овощи, фрукты и хлеб с отрубями."
+  },
+  {
+   "id": "zararli",
+   "who": ["homilador"],
+   "src": "anc",
+   "uz": "Homiladorlikda tamaki va spirtli ichimliklar mumkin emas, tutunli xonada bo'lmang. Kofe va achchiq choyni kamaytiring.",
+   "ru": "При беременности нельзя табак и алкоголь, не находитесь в прокуренном помещении. Кофе и крепкого чая пейте меньше."
+  },
+  {
+   "id": "dori",
+   "who": ["homilador", "tuqqan"],
+   "src": "pcpnc",
+   "uz": "Har qanday dorini, shu jumladan o'simlik damlamalarini ham, faqat shifokor bilan maslahatlashib iching.",
+   "ru": "Любые лекарства, в том числе травяные настои, принимайте только после совета с врачом."
+  },
+  {
+   "id": "korik",
+   "who": ["homilador"],
+   "src": "anc",
+   "uz": "Shifokor belgilagan ko'rik va tahlillarga o'z vaqtida boring, hatto o'zingizni yaxshi his qilsangiz ham.",
+   "ru": "Приходите на осмотры и анализы в назначенные врачом сроки, даже если чувствуете себя хорошо."
+  },
+  {
+   "id": "dam",
+   "who": ["homilador"],
+   "src": "pcpnc",
+   "uz": "Yetarlicha dam oling va uxlang, kun davomida ham bir oz yotib dam olishga harakat qiling.",
+   "ru": "Достаточно отдыхайте и спите, старайтесь прилечь отдохнуть и днём."
+  },
+  {
+   "id": "qimirlash",
+   "who": ["homilador"],
+   "src": "pcpnc",
+   "uz": "Homila qimirlashini har kuni kuzating. Agar qimirlash odatdagidan ancha kamaysa yoki sezilmasa, kutmasdan shifokorga murojaat qiling.",
+   "ru": "Следите за шевелениями плода каждый день. Если они стали заметно реже обычного или пропали, не ждите и обратитесь к врачу."
+  },
+  {
+   "id": "xavf_homila",
+   "who": ["homilador"],
+   "src": "pcpnc",
+   "uz": "Qon ketishi, kuchli bosh og'rig'i, ko'z oldining xiralashishi, tutqanoq, kuchli qorin og'rig'i, isitma, suv ketishi yoki homila qimirlashining kamayishi xavfli belgilardir. Bunday holda darhol bir yuz uch raqamiga qo'ng'iroq qiling.",
+   "ru": "Кровотечение, сильная головная боль, помутнение в глазах, судороги, сильная боль в животе, жар, излитие вод или редкие шевеления плода — опасные признаки. В таком случае сразу звоните по номеру сто три."
+  },
+  {
+   "id": "xavf_tuqqan",
+   "who": ["tuqqan"],
+   "src": "pcpnc",
+   "uz": "Tug'ruqdan keyin ko'p qon ketishi, isitma, kuchli bosh og'rig'i, nafas qisishi, yomon hidli ajralma yoki ko'krakning og'riqli qizarishi xavfli belgilardir. Bunday holda darhol bir yuz uch raqamiga qo'ng'iroq qiling.",
+   "ru": "После родов сильное кровотечение, жар, сильная головная боль, одышка, выделения с неприятным запахом или болезненное покраснение груди — опасные признаки. В таком случае сразу звоните по номеру сто три."
+  },
+  {
+   "id": "gigiyena",
+   "who": ["tuqqan"],
+   "src": "pnc",
+   "uz": "Tug'ruqdan keyin tozalikka rioya qiling: har kuni yuvining, gigiyena vositalarini tez-tez almashtiring va qo'lingizni sovunlab yuving.",
+   "ru": "После родов соблюдайте чистоту: мойтесь каждый день, часто меняйте гигиенические средства и мойте руки с мылом."
+  },
+  {
+   "id": "ona_dam",
+   "who": ["tuqqan"],
+   "src": "pnc",
+   "uz": "Tug'ruqdan keyin yaxshi ovqatlaning, ko'proq suyuqlik iching va chaqaloq uxlaganda o'zingiz ham dam oling. Yaqinlaringizdan yordam so'rashdan tortinmang.",
+   "ru": "После родов хорошо питайтесь, пейте больше жидкости и отдыхайте, когда спит ребёнок. Не стесняйтесь просить близких о помощи."
+  },
+  {
+   "id": "kayfiyat",
+   "who": ["tuqqan"],
+   "src": "pnc",
+   "uz": "Tug'ruqdan keyin kayfiyat tushishi ko'p uchraydi. Agar g'amginlik, xavotir yoki uyqusizlik ikki haftadan ortiq davom etsa, shifokoringizga ayting.",
+   "ru": "После родов часто бывает подавленное настроение. Если грусть, тревога или бессонница продолжаются больше двух недель, скажите об этом врачу."
+  },
+  {
+   "id": "rejalash",
+   "who": ["tuqqan"],
+   "src": "pnc",
+   "uz": "Keyingi homiladorlikni rejalashtirish va homiladorlikdan saqlanish usullarini shifokoringiz bilan muhokama qiling.",
+   "ru": "Планирование следующей беременности и способы предохранения обсудите с вашим врачом."
+  },
+  {
+   "id": "emizish",
+   "who": ["tuqqan", "chaqaloq"],
+   "src": "pnc",
+   "uz": "Chaqaloqni u xohlaganda, kechasi ham emizing. Dastlabki olti oyda unga faqat ona suti yetarli, suv yoki boshqa ovqat berish shart emas.",
+   "ru": "Кормите ребёнка грудью по его требованию, в том числе ночью. Первые шесть месяцев ему достаточно только грудного молока, воды и другой пищи не нужно."
+  },
+  {
+   "id": "kokrak",
+   "who": ["tuqqan", "chaqaloq"],
+   "src": "pnc",
+   "uz": "Ko'krak to'lib og'risa, chaqaloqni tez-tez emizing va uni ko'krakka to'g'ri tuting. Qizarish, qattiq og'riq yoki isitma bo'lsa, shifokorga murojaat qiling.",
+   "ru": "Если грудь переполнена и болит, кормите ребёнка чаще и правильно прикладывайте его. При покраснении, сильной боли или жаре обратитесь к врачу."
+  },
+  {
+   "id": "xavf_chaqaloq",
+   "who": ["tuqqan", "chaqaloq"],
+   "src": "pcpnc",
+   "uz": "Chaqaloq yaxshi emmasa, lanj bo'lsa, tez yoki qiyin nafas olsa, isitmasi chiqsa yoki sovib ketsa, tutqanoq tutsa, terisi sarg'aysa yoki kindigi qizarib yiringlasa, bular xavfli belgilardir. Bunday holda darhol bir yuz uch raqamiga qo'ng'iroq qiling.",
+   "ru": "Если ребёнок плохо сосёт, вялый, дышит часто или с трудом, у него жар или он холодный, судороги, пожелтела кожа или покраснел и гноится пупок — это опасные признаки. В таком случае сразу звоните по номеру сто три."
+  },
+  {
+   "id": "kindik",
+   "who": ["tuqqan", "chaqaloq"],
+   "src": "pnc",
+   "uz": "Kindikni toza va quruq saqlang, unga hech narsa surtmang va bog'lamang. Qizarsa, yiring yoki yomon hid paydo bo'lsa, shifokorga ko'rsating.",
+   "ru": "Держите пупок чистым и сухим, ничем его не мажьте и не перевязывайте. Если он покраснел, появился гной или неприятный запах, покажите ребёнка врачу."
+  },
+  {
+   "id": "issiqlik",
+   "who": ["tuqqan", "chaqaloq"],
+   "src": "pnc",
+   "uz": "Chaqaloqni issiq tuting: iliq kiyintiring, boshini yoping va uni tez-tez bag'ringizga bosib, teriga teri tekkizib tuting.",
+   "ru": "Держите ребёнка в тепле: одевайте тепло, прикрывайте голову и чаще прижимайте к себе, кожа к коже."
+  },
+  {
+   "id": "uyqu",
+   "who": ["tuqqan", "chaqaloq"],
+   "src": "pnc",
+   "uz": "Chaqaloqni chalqancha, tekis va qattiqroq to'shakka yotqizing. Yonida yostiq va yumshoq o'yinchoqlar bo'lmasin.",
+   "ru": "Укладывайте ребёнка спать на спину, на ровный и достаточно твёрдый матрас. Рядом не должно быть подушек и мягких игрушек."
+  },
+  {
+   "id": "qol_yuvish",
+   "who": ["tuqqan", "chaqaloq"],
+   "src": "pcpnc",
+   "uz": "Chaqaloqni qo'lga olishdan oldin qo'lingizni sovunlab yuving. Kasal odamlarni unga yaqinlashtirmang.",
+   "ru": "Перед тем как взять ребёнка на руки, мойте руки с мылом. Не подпускайте к нему больных людей."
+  },
+  {
+   "id": "chomilish",
+   "who": ["tuqqan", "chaqaloq"],
+   "src": "pcpnc",
+   "uz": "Chaqaloqni iliq xonada, iliq suvda cho'miltiring, keyin darhol quritib, iliq kiyintiring.",
+   "ru": "Купайте ребёнка в тёплой комнате и в тёплой воде, потом сразу вытирайте насухо и тепло одевайте."
+  },
+  {
+   "id": "sariqlik",
+   "who": ["tuqqan", "chaqaloq"],
+   "src": "pcpnc",
+   "uz": "Chaqaloqning terisi yoki ko'z oqi sarg'aysa, ayniqsa kaft va tovonlari sarg'aysa, uni shu kunning o'zida shifokorga ko'rsating.",
+   "ru": "Если у ребёнка пожелтела кожа или белки глаз, особенно ладони и стопы, покажите его врачу в тот же день."
+  },
+  {
+   "id": "emlash",
+   "who": ["tuqqan", "chaqaloq"],
+   "src": "pcpnc",
+   "uz": "Emlashlar milliy taqvim bo'yicha poliklinikada qilinadi. Qaysi emlash qachon qilinishini oilaviy shifokoringiz yoki hamshirangiz aytadi.",
+   "ru": "Прививки делают в поликлинике по национальному календарю. Какую прививку и когда делать, скажет ваш семейный врач или медсестра."
+  }
+ ]
+}

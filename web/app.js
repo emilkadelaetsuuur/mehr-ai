@@ -322,6 +322,17 @@
       ${withP && x.patient ? `<div><a href="#/bemor/${x.patient.id}"><b>${esc(x.patient.name)}</b></a> ${zb(x.patient.zone)} <span class="small">${esc(x.patient.mahalla || "")} · ${esc(x.patient.phone || "")}</span></div>` : ""}
       <div class="small">${esc(x.reason || "")}</div><div class="row-b mt" style="justify-content:space-between"><span>${timer(x.due_at, x.status) || `<span class="small">${dt(x.done_at)}</span>`}</span>
       ${x.status === "ochiq" && can.close(x) ? `<button class="btn sm" data-done="${x.id}">${t("mark_done")}</button>` : ""}</div></div>`;
+  // One exchange of the free part of a call: what the patient asked and what the assistant did with it.
+  const talkRow = (x) =>
+    `<div class="small">${t("q_asked")}: <span class="quote">${esc(x.q)}</span><br>→ ${
+      x.kind === "answer"
+        ? `${t("q_answer")} <span class="badge z-gray">${t(x.by === "claude" ? "closing_claude" : "closing_voicelab")}</span>: <span class="quote">${esc(x.a)}</span>${
+            x.source?.length ? ` (${t("q_src")}: ${esc(x.source.join("; "))})` : ""
+          }${x.to ? ` · ${t("q_told")}` : ""}`
+        : x.kind === "alarm"
+          ? `<b>${t("q_alarm")}</b>`
+          : t(x.to === "hamshira" ? "q_nurse" : "q_doctor")
+    }</div>`;
   const callRow = (
     c,
     withP,
@@ -332,9 +343,10 @@
       ${
         c.status === "tugadi"
           ? Object.entries(c.answers || {})
-              .map(
-                ([k, a]) =>
-                  `<div class="small">${esc(k)}: <b>${a.value === "yes" ? t("yes") : a.value === "no" ? t("no") : a.value == null || a.value === "unclear" ? t("unclear") : esc(a.value)}</b>${a.transcript ? ` — <span class="quote">${esc(a.transcript)}</span>` : ""}</div>`,
+              .map(([k, a]) =>
+                k === "suhbat"
+                  ? (a.items || []).map(talkRow).join("")
+                  : `<div class="small">${k === "shaxs" ? t("a_shaxs") : esc(k)}: <b>${a.value === "yes" ? t("yes") : a.value === "no" ? t("no") : a.value == null || a.value === "unclear" ? t("unclear") : esc(a.value)}</b>${a.transcript ? ` — <span class="quote">${esc(a.transcript)}</span>` : ""}</div>`,
               )
               .join("") +
             (c.closing
