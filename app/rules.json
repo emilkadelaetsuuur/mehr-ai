@@ -1,6 +1,7 @@
 {
   "_izoh": "Zona qoidalari. Chegaralar umumiy mo'ljal: yakuniy qiymatlarni shifokor milliy klinik protokol bo'yicha tasdiqlaydi. Kodga tegmasdan shu faylda o'zgartiriladi.",
-  "version": "2026-11-17",
+  "version": "2026-11-18",
+  "valid_days": 45,
   "bp": {"yellow": [140, 90], "red": [160, 110]},
   "hb": {"yellow_below": 110, "red_below": 70, "drop_yellow": 15},
   "glucose": {"yellow_from": 7.0, "red_from": 11.0},

@@ -5,13 +5,29 @@ in the transcript -> unverified fields are dropped. If the LLM is unavailable, a
 parser (regex + keyword lists for Uzbek and Russian) fills what it can.
 The AI never writes a diagnosis of its own: `diagnosis` is kept only when it was dictated.
 """
+
 import re
 
 from . import voicelab
 from .rules import COMPLAINTS, T
 
-FIELDS = ["full_name", "birth_year", "kind", "weeks", "bp", "hb", "glucose", "temp", "pulse", "breath",
-          "complaints", "diagnosis", "referral", "mahalla", "phone"]
+FIELDS = [
+    "full_name",
+    "birth_year",
+    "kind",
+    "weeks",
+    "bp",
+    "hb",
+    "glucose",
+    "temp",
+    "pulse",
+    "breath",
+    "complaints",
+    "diagnosis",
+    "referral",
+    "mahalla",
+    "phone",
+]
 
 SYSTEM = """Sen tibbiy registratura yordamchisisan. Hamshira yoki shifokor aytgan matndan bemor kartasi maydonlarini ajrat.
 Matn o'zbek yoki rus tilida. FAQAT bitta JSON obyekt qaytar, boshqa hech narsa yozma.
@@ -114,7 +130,7 @@ def _clean(raw, text):
 
 def _negated(low, i, n):
     """True when a complaint keyword is denied nearby: 'shish yo'q', 'отёков нет', 'без отёков'."""
-    after, before = low[i + n:i + n + 22], low[max(0, i - 14):i]
+    after, before = low[i + n : i + n + 22], low[max(0, i - 14) : i]
     return bool(re.search(r"^\w*\s*(yo'q|yoq|emas|нет|не было|kuzatilmadi|bo'lmadi)\b", after) or re.search(r"(без|нет|не)\s+\w*\s*$", before))
 
 
@@ -127,11 +143,13 @@ def fallback(text):
     m = re.search(r"\b(19[4-9]\d|20[0-2]\d)\b", text)
     if m:
         raw["birth_year"] = {"value": m.group(1), "quote": m.group(0)}
-    for key, pat in (("hb", r"(?:gemoglobin\w*|гемоглобин\w*)\D{0,12}(\d{2,3})"),
-                     ("weeks", r"(\d{1,2})\s*[- ]?(?:hafta|недел)"),
-                     ("temp", r"(?:harorat\w*|температур\w*|isitma\w*)\D{0,12}(\d{2}(?:[.,]\d)?)"),
-                     ("pulse", r"(?:puls\w*|пульс\w*)\D{0,10}(\d{2,3})"),
-                     ("glucose", r"(?:qand\w*|сахар\w*)\D{0,12}(\d{1,2}(?:[.,]\d)?)")):
+    for key, pat in (
+        ("hb", r"(?:gemoglobin\w*|гемоглобин\w*)\D{0,12}(\d{2,3})"),
+        ("weeks", r"(\d{1,2})\s*[- ]?(?:hafta|недел)"),
+        ("temp", r"(?:harorat\w*|температур\w*|isitma\w*)\D{0,12}(\d{2}(?:[.,]\d)?)"),
+        ("pulse", r"(?:puls\w*|пульс\w*)\D{0,10}(\d{2,3})"),
+        ("glucose", r"(?:qand\w*|сахар\w*)\D{0,12}(\d{1,2}(?:[.,]\d)?)"),
+    ):
         m = re.search(pat, text.lower())
         if m:
             raw[key] = {"value": m.group(1), "quote": m.group(0)}
@@ -193,9 +211,13 @@ def yes_no(text, question=""):
         return "no"
     if yes and not no:
         return "yes"
-    out = voicelab.chat([
-        {"role": "system", "content": "Savolga berilgan javobni tasnifla. Faqat bitta so'z yoz: HA, YOQ yoki NOANIQ."},
-        {"role": "user", "content": f"Savol: {question}\nJavob: {text}"}], max_tokens=5)
+    out = voicelab.chat(
+        [
+            {"role": "system", "content": "Savolga berilgan javobni tasnifla. Faqat bitta so'z yoz: HA, YOQ yoki NOANIQ."},
+            {"role": "user", "content": f"Savol: {question}\nJavob: {text}"},
+        ],
+        max_tokens=5,
+    )
     if out:
         o = _norm(out)
         if o.startswith("ha"):
@@ -210,8 +232,9 @@ def number(text):
     m = re.search(r"\d{1,3}(?:[.,]\d)?", text or "")
     if m:
         return _num(m.group(0))
-    out = voicelab.chat([
-        {"role": "system", "content": "Matndagi sonni raqam bilan yoz. Faqat son, masalan 37.5. Son bo'lmasa: YOQ."},
-        {"role": "user", "content": text or ""}], max_tokens=8)
+    out = voicelab.chat(
+        [{"role": "system", "content": "Matndagi sonni raqam bilan yoz. Faqat son, masalan 37.5. Son bo'lmasa: YOQ."}, {"role": "user", "content": text or ""}],
+        max_tokens=8,
+    )
     m = re.search(r"\d{1,3}(?:[.,]\d)?", out or "")
     return _num(m.group(0)) if m else None

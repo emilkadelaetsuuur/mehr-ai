@@ -1,5 +1,6 @@
 """Referral PDF (yo'llanma) built from the confirmed card. Sample layout: the approved clinic
 form replaces it once the ministry template is provided."""
+
 import io
 import os
 from datetime import datetime
@@ -22,7 +23,7 @@ R, B = ("DV", "DVB") if _F["ok"] else ("Helvetica", "Helvetica-Bold")
 ZC = {"red": "#c62828", "yellow": "#b7791f", "green": "#1b7f4b"}
 
 
-def referral(p, lang="uz"):
+def referral(p, lang="uz", to=""):
     uz = lang != "ru"
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A5)
@@ -89,14 +90,16 @@ def referral(p, lang="uz"):
         c.drawString(28, y, f"• {r['uz' if uz else 'ru']} {r['value']}  ({r['rule']})"[:95])
         y -= 13
     y -= 6
-    row("Yo'llanma" if uz else "Куда направляется", getattr(p, "_referral", None) or ("Mutaxassis ko'rigi" if uz else "Осмотр специалиста"), True)
+    row("Yo'llanma" if uz else "Куда направляется", to or ("Mutaxassis ko'rigi" if uz else "Осмотр специалиста"), True)
     row("Oilaviy shifokor" if uz else "Семейный врач", p.doctor)
     c.setFillColor(HexColor("#5b6675"))
     c.setFont(R, 7)
-    foot = ("Hujjat Nigoh tizimida tasdiqlangan karta asosida tuzildi. Zona klinik protokol qoidalari bo'yicha hisoblangan; "
-            "qarorni shifokor qabul qiladi. Namuna shakl." if uz else
-            "Документ сформирован в системе Nigoh по подтверждённой карточке. Зона рассчитана по правилам протокола; "
-            "решение принимает врач. Образец формы.")
+    foot = (
+        "Hujjat Nigoh tizimida tasdiqlangan karta asosida tuzildi. Zona klinik protokol qoidalari bo'yicha hisoblangan; "
+        "qarorni shifokor qabul qiladi. Namuna shakl."
+        if uz
+        else "Документ сформирован в системе Nigoh по подтверждённой карточке. Зона рассчитана по правилам протокола; решение принимает врач. Образец формы."
+    )
     c.drawString(24, 40, foot[:118])
     c.drawString(24, 30, foot[118:236])
     c.line(W - 190, 64, W - 24, 64)
@@ -108,5 +111,6 @@ def referral(p, lang="uz"):
 
 def rules_label(code, uz):
     from .rules import COMPLAINTS
+
     t = COMPLAINTS.get(code)
     return (t[0] if uz else t[1]) if t else code

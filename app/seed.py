@@ -1,4 +1,5 @@
 """Synthetic district: 300 invented patients. No real personal data is used anywhere."""
+
 import random
 import secrets
 from datetime import timedelta
@@ -6,10 +7,54 @@ from datetime import timedelta
 from . import core
 from .db import Call, Notice, Observation, Patient, RiskEvent, Task
 
-F = ["Dilnoza", "Madina", "Gulnora", "Nilufar", "Zarina", "Shahnoza", "Malika", "Feruza", "Nodira", "Sevara", "Kamola", "Mohira",
-     "Dildora", "Umida", "Nargiza", "Barno", "Lola", "Ozoda", "Munisa", "Shoira", "Iroda", "Zilola", "Maftuna", "Gulshan"]
-L = ["Karimova", "Yusupova", "Rahimova", "Tosheva", "Abdullayeva", "Ismoilova", "Nazarova", "Qodirova", "Saidova", "Ergasheva",
-     "Xolmatova", "Mirzayeva", "Sobirova", "Normatova", "Hamidova", "Jo'rayeva", "Aliyeva", "Usmonova", "Sultonova", "Boboyeva"]
+F = [
+    "Dilnoza",
+    "Madina",
+    "Gulnora",
+    "Nilufar",
+    "Zarina",
+    "Shahnoza",
+    "Malika",
+    "Feruza",
+    "Nodira",
+    "Sevara",
+    "Kamola",
+    "Mohira",
+    "Dildora",
+    "Umida",
+    "Nargiza",
+    "Barno",
+    "Lola",
+    "Ozoda",
+    "Munisa",
+    "Shoira",
+    "Iroda",
+    "Zilola",
+    "Maftuna",
+    "Gulshan",
+]
+L = [
+    "Karimova",
+    "Yusupova",
+    "Rahimova",
+    "Tosheva",
+    "Abdullayeva",
+    "Ismoilova",
+    "Nazarova",
+    "Qodirova",
+    "Saidova",
+    "Ergasheva",
+    "Xolmatova",
+    "Mirzayeva",
+    "Sobirova",
+    "Normatova",
+    "Hamidova",
+    "Jo'rayeva",
+    "Aliyeva",
+    "Usmonova",
+    "Sultonova",
+    "Boboyeva",
+]
 BOYS = ["Amir", "Imron", "Mustafo", "Muhammadali", "Bilol", "Abdulloh", "Yusuf", "Umar"]
 GIRLS = ["Soliha", "Muslima", "Hadicha", "Oisha", "Mubina", "Safiya", "Zaynab", "Maryam"]
 MAHALLA = ["Navbahor", "Bog'ishamol", "Guliston", "Istiqlol", "Do'stlik", "Yangiobod", "Tinchlik", "Obod", "Nurafshon", "Mehnatobod"]
@@ -32,7 +77,9 @@ def run(db, n=300, seed=7):
                 return s
 
     def obs(p, days_ago, source, data, text=""):
-        o = Observation(patient=p, source=source, data=data, quotes={}, text=text, author="seed", created_at=now - timedelta(days=days_ago, hours=rnd.randint(0, 9)))
+        o = Observation(
+            patient=p, source=source, data=data, quotes={}, text=text, author="seed", created_at=now - timedelta(days=days_ago, hours=rnd.randint(0, 9))
+        )
         db.add(o)
 
     patients = []
@@ -43,14 +90,34 @@ def run(db, n=300, seed=7):
             mother = rnd.choice([x for x in patients if x.kind == "tuqqan"])
             born = now - timedelta(days=rnd.randint(1, 27))
             boy = rnd.random() < 0.5
-            p = Patient(full_name=f"{mother.full_name.split()[0][:-1] if boy else mother.full_name.split()[0]} {rnd.choice(BOYS if boy else GIRLS)}",
-                        kind=kind, born_at=born, birth_year=born.year, mother_id=mother.id, mahalla=mother.mahalla, phone=mother.phone,
-                        doctor=mother.doctor, zone="green", last_contact_at=now - timedelta(days=rnd.randint(0, 5)), created_at=born)
+            p = Patient(
+                full_name=f"{mother.full_name.split()[0][:-1] if boy else mother.full_name.split()[0]} {rnd.choice(BOYS if boy else GIRLS)}",
+                kind=kind,
+                born_at=born,
+                birth_year=born.year,
+                mother_id=mother.id,
+                mahalla=mother.mahalla,
+                phone=mother.phone,
+                doctor=mother.doctor,
+                zone="green",
+                consent_at=now,
+                last_contact_at=now - timedelta(days=rnd.randint(0, 5)),
+                created_at=born,
+            )
         else:
-            p = Patient(full_name=name(), kind=kind, birth_year=rnd.randint(1984, 2006), weeks=rnd.randint(8, 39) if kind == "homilador" else None,
-                        mahalla=mah, phone=f"+998 9{rnd.randint(0, 9)} {rnd.randint(100, 999)}-{rnd.randint(10, 99)}-{rnd.randint(10, 99)}",
-                        doctor=rnd.choice(DOCS), zone="green", last_contact_at=now - timedelta(days=rnd.randint(0, 6)),
-                        created_at=now - timedelta(days=rnd.randint(20, 160)))
+            p = Patient(
+                full_name=name(),
+                kind=kind,
+                birth_year=rnd.randint(1984, 2006),
+                weeks=rnd.randint(8, 39) if kind == "homilador" else None,
+                mahalla=mah,
+                phone=f"+998 9{rnd.randint(0, 9)} {rnd.randint(100, 999)}-{rnd.randint(10, 99)}-{rnd.randint(10, 99)}",
+                doctor=rnd.choice(DOCS),
+                zone="green",
+                consent_at=now,
+                last_contact_at=now - timedelta(days=rnd.randint(0, 6)),
+                created_at=now - timedelta(days=rnd.randint(20, 160)),
+            )
         db.add(p)
         db.flush()
         patients.append(p)
@@ -63,8 +130,13 @@ def run(db, n=300, seed=7):
             continue
         hb0 = rnd.randint(114, 134)
         obs(p, rnd.randint(25, 60), "tahlil", {"hb": hb0, "bp_sys": rnd.randint(100, 128), "bp_dia": rnd.randint(62, 82)})
-        d = {"hb": hb0 + rnd.randint(-6, 4), "bp_sys": rnd.randint(100, 132), "bp_dia": rnd.randint(62, 84),
-             "glucose": round(rnd.uniform(4.0, 6.2), 1), "complaints": []}
+        d = {
+            "hb": hb0 + rnd.randint(-6, 4),
+            "bp_sys": rnd.randint(100, 132),
+            "bp_dia": rnd.randint(62, 84),
+            "glucose": round(rnd.uniform(4.0, 6.2), 1),
+            "complaints": [],
+        }
         if r < 0.045:
             d.update(bp_sys=rnd.randint(160, 178), bp_dia=rnd.randint(104, 116), complaints=["kuchli_bosh_ogrigi"])
         elif r < 0.065:
@@ -89,39 +161,132 @@ def run(db, n=300, seed=7):
         created = now - timedelta(days=rnd.randint(3, 40))
         late = rnd.random() < 0.13
         st = rnd.choices(["tasdiqlandi", "bajarildi", "nomuvofiq"], [0.8, 0.16, 0.04])[0]
-        db.add(Task(patient_id=p.id, type=rnd.choice(["faol_chaqiruv", "mutaxassis"]), role="shifokor", reason="Arxiv yozuvi",
-                    created_at=created, due_at=created + timedelta(hours=24), done_at=created + timedelta(hours=rnd.randint(30, 50) if late else rnd.randint(2, 22)),
-                    status=st, escalated=late))
+        db.add(
+            Task(
+                patient_id=p.id,
+                type=rnd.choice(["faol_chaqiruv", "mutaxassis"]),
+                role="shifokor",
+                reason="Arxiv yozuvi",
+                created_at=created,
+                due_at=created + timedelta(hours=24),
+                done_at=created + timedelta(hours=rnd.randint(30, 50) if late else rnd.randint(2, 22)),
+                status=st,
+                escalated=late,
+            )
+        )
     # one overdue open task to show escalation
     q = next(x for x in patients if x.zone == "yellow" and x.kind == "homilador")
-    db.add(Task(patient_id=q.id, type="faol_chaqiruv", role="shifokor", reason="Shifoxonadan chiqarildi",
-                created_at=now - timedelta(hours=31), due_at=now - timedelta(hours=7), status="ochiq"))
+    db.add(
+        Task(
+            patient_id=q.id,
+            type="faol_chaqiruv",
+            role="shifokor",
+            reason="Shifoxonadan chiqarildi",
+            created_at=now - timedelta(hours=31),
+            due_at=now - timedelta(hours=7),
+            status="ochiq",
+        )
+    )
     # calls: a few finished and planned ones so the calls page shows the whole cycle
-    ok = {"emish": {"value": "yes", "transcript": "Ha, yaxshi emyapti."}, "tutqanoq": {"value": "no", "transcript": "Yo'q."},
-          "nafas": {"value": "no", "transcript": "Yo'q, bir tekis."}, "lanj": {"value": "no", "transcript": "Yo'q."},
-          "sariq": {"value": "no", "transcript": "Yo'q."}, "harorat": {"value": 36.7, "transcript": "O'ttiz olti-yu yetti."}}
+    ok = {
+        "emish": {"value": "yes", "transcript": "Ha, yaxshi emyapti."},
+        "tutqanoq": {"value": "no", "transcript": "Yo'q."},
+        "nafas": {"value": "no", "transcript": "Yo'q, bir tekis."},
+        "lanj": {"value": "no", "transcript": "Yo'q."},
+        "sariq": {"value": "no", "transcript": "Yo'q."},
+        "harorat": {"value": 36.7, "transcript": "O'ttiz olti-yu yetti."},
+    }
     for i, p in enumerate([x for x in patients if x.kind == "chaqaloq" and x.zone == "green"][:9]):
         when = now - timedelta(days=i + 1, hours=3)
         if i < 4:
-            db.add(Call(token=secrets.token_urlsafe(9), patient_id=p.id, scenario="chaqaloq_30kun", lang="uz", status="tugadi", answers=ok, flags=[],
-                        planned_at=when, finished_at=when, created_at=when))
+            db.add(
+                Call(
+                    token=secrets.token_urlsafe(9),
+                    patient_id=p.id,
+                    scenario="chaqaloq_30kun",
+                    lang="uz",
+                    status="tugadi",
+                    answers=ok,
+                    flags=[],
+                    planned_at=when,
+                    finished_at=when,
+                    created_at=when,
+                )
+            )
         else:
-            db.add(Call(token=secrets.token_urlsafe(9), patient_id=p.id, scenario="chaqaloq_30kun", lang="uz", status="rejalashtirilgan", answers={}, flags=[],
-                        planned_at=now + timedelta(days=i - 3), created_at=now))
+            db.add(
+                Call(
+                    token=secrets.token_urlsafe(9),
+                    patient_id=p.id,
+                    scenario="chaqaloq_30kun",
+                    lang="uz",
+                    status="rejalashtirilgan",
+                    answers={},
+                    flags=[],
+                    planned_at=now + timedelta(days=i - 3),
+                    created_at=now,
+                )
+            )
     late = next(x for x in patients if x.kind == "homilador" and x.zone == "yellow")
-    db.add(Call(token=secrets.token_urlsafe(9), patient_id=late.id, scenario="homilador", lang="uz", status="javobsiz", attempts=3, answers={}, flags=["noanswer"],
-                planned_at=now - timedelta(days=1), finished_at=now - timedelta(days=1), created_at=now - timedelta(days=1)))
+    db.add(
+        Call(
+            token=secrets.token_urlsafe(9),
+            patient_id=late.id,
+            scenario="homilador",
+            lang="uz",
+            status="javobsiz",
+            attempts=3,
+            answers={},
+            flags=["noanswer"],
+            planned_at=now - timedelta(days=1),
+            finished_at=now - timedelta(days=1),
+            created_at=now - timedelta(days=1),
+        )
+    )
     db.query(Notice).delete()
     # three fixed patients for the live demo
-    a = Patient(full_name="Sodiqova Dilnoza", kind="homilador", birth_year=1998, weeks=32, mahalla="Bog'ishamol", phone="+998 90 123-45-67",
-                doctor="Rahmonov B.", zone="green", last_contact_at=now, created_at=now - timedelta(days=90))
-    b = Patient(full_name="Valiyeva Madina", kind="tuqqan", birth_year=1995, mahalla="Guliston", phone="+998 91 234-56-78",
-                doctor="Qosimova D.", zone="green", last_contact_at=now, created_at=now - timedelta(days=200),
-                diagnosis="Og'ir preeklampsiya, kesarcha kesish (shifokor yozuvi)")
+    a = Patient(
+        full_name="Sodiqova Dilnoza",
+        kind="homilador",
+        birth_year=1998,
+        weeks=32,
+        mahalla="Bog'ishamol",
+        phone="+998 90 123-45-67",
+        doctor="Rahmonov B.",
+        zone="green",
+        consent_at=now,
+        last_contact_at=now,
+        created_at=now - timedelta(days=90),
+    )
+    b = Patient(
+        full_name="Valiyeva Madina",
+        kind="tuqqan",
+        birth_year=1995,
+        mahalla="Guliston",
+        phone="+998 91 234-56-78",
+        doctor="Qosimova D.",
+        zone="green",
+        consent_at=now,
+        last_contact_at=now,
+        created_at=now - timedelta(days=200),
+        diagnosis="Og'ir preeklampsiya, kesarcha kesish (shifokor yozuvi)",
+    )
     db.add_all([a, b])
     db.flush()
-    c = Patient(full_name="Valiyev Amir", kind="chaqaloq", born_at=now - timedelta(days=3), birth_year=now.year, mother_id=b.id, mahalla="Guliston",
-                phone=b.phone, doctor=b.doctor, zone="green", last_contact_at=now, created_at=now - timedelta(days=3))
+    c = Patient(
+        full_name="Valiyev Amir",
+        kind="chaqaloq",
+        born_at=now - timedelta(days=3),
+        birth_year=now.year,
+        mother_id=b.id,
+        mahalla="Guliston",
+        phone=b.phone,
+        doctor=b.doctor,
+        zone="green",
+        consent_at=now,
+        last_contact_at=now,
+        created_at=now - timedelta(days=3),
+    )
     db.add(c)
     db.flush()
     obs(a, 30, "tahlil", {"hb": 121, "bp_sys": 112, "bp_dia": 72})

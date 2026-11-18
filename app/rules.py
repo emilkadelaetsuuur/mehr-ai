@@ -4,6 +4,7 @@ The zone is ALWAYS produced by these rules (thresholds live in rules.json).
 ML and LLM never change a zone: they only add a second opinion and a summary.
 Every reason carries the value and the exact words it came from.
 """
+
 import json
 import os
 from datetime import datetime
@@ -48,6 +49,7 @@ LABELS = {
     "discharge": ("Shifoxonadan chiqarilgan", "Выписана из стационара"),
     "unclear": ("Qo'ng'iroqda javob noaniq", "Ответ в звонке неясен"),
     "noanswer": ("Qo'ng'iroqqa javob bermadi", "Не ответила на звонок"),
+    "hold": ("Mutaxassis ko'rigi kutilmoqda: zonani faqat mutaxassis pasaytiradi", "Ждём осмотра специалиста: снизить зону может только он"),
     "ahvol": ("Ahvoli yomonlashgan", "Состояние ухудшилось"),
     "dori": ("Dorilarni qabul qilmayapti", "Не принимает лекарства"),
     "fikr": ("Tushuntirish tushunarsiz bo'lgan", "Объяснения врача были непонятны"),

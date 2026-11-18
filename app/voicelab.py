@@ -4,6 +4,8 @@ Only documented endpoints are used (docs.voicelab.uz). The API key stays on the 
 Without a key the module runs in offline mode: STT/TTS/LLM return None and callers fall
 back to deterministic logic, so the product and the tests keep working.
 """
+
+import contextlib
 import hashlib
 import json
 import logging
@@ -88,15 +90,12 @@ def stt(audio: bytes, filename="audio.webm", content_type="audio/webm", language
                     break
                 time.sleep(delay)
                 delay = min(delay * 1.3, 1.5)
-            try:
+            with contextlib.suppress(Exception):
                 c.delete(f"{BASE}/v1/stt/transcriptions/{job}", headers=_headers())
-            except Exception:
-                pass
             if body.get("status") != "completed":
                 log.warning("stt job %s ended as %s", job, body.get("status"))
                 return None
-            return {"text": (body.get("transcript") or "").strip(), "language": body.get("language") or language,
-                    "ms": int((time.time() - t0) * 1000)}
+            return {"text": (body.get("transcript") or "").strip(), "language": body.get("language") or language, "ms": int((time.time() - t0) * 1000)}
     except Exception as e:
         log.warning("stt failed: %s", e)
         return None
@@ -112,8 +111,13 @@ def chat(messages, max_tokens=700, temperature=0.0, timeout=60):
             r = c.post(
                 f"{BASE}/v1/chat/completions",
                 headers=_headers({"Content-Type": "application/json", "Idempotency-Key": str(uuid.uuid4())}),
-                json={"model": s["model"], "messages": messages, "max_tokens": max_tokens, "temperature": temperature,
-                      **({"reasoning_effort": "none"} if s["model"].startswith("aisha-gemma") else {})},
+                json={
+                    "model": s["model"],
+                    "messages": messages,
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                    **({"reasoning_effort": "none"} if s["model"].startswith("aisha-gemma") else {}),
+                },
             )
             if r.status_code >= 400:
                 log.warning("llm %s %s", r.status_code, r.text[:300])
@@ -133,7 +137,7 @@ def chat_json(system, user, max_tokens=700):
     if a < 0 or b <= a:
         return None
     try:
-        return json.loads(out[a:b + 1])
+        return json.loads(out[a : b + 1])
     except Exception:
         return None
 

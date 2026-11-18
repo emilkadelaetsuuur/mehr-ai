@@ -4,6 +4,7 @@ RandomForest trained on the open UCI "Maternal Health Risk" dataset (1,014 recor
 age, blood pressure, blood sugar, temperature, heart rate -> low / mid / high risk).
 Metrics are measured on a 25% hold-out and shown in the app.
 """
+
 import csv
 import logging
 import os
@@ -34,8 +35,12 @@ def load():
         clf = RandomForestClassifier(n_estimators=200, random_state=42).fit(Xa, ya)
         pred = clf.predict(Xb)
         _m["model"] = clf
-        _m["metrics"] = {"records": len(X), "holdout": len(Xb), "accuracy": round(accuracy_score(yb, pred), 3),
-                         "recall_red": round(recall_score(yb, pred, labels=["red"], average="macro"), 3)}
+        _m["metrics"] = {
+            "records": len(X),
+            "holdout": len(Xb),
+            "accuracy": round(accuracy_score(yb, pred), 3),
+            "recall_red": round(recall_score(yb, pred, labels=["red"], average="macro"), 3),
+        }
         log.info("ML model ready: %s", _m["metrics"])
     except Exception as e:
         log.warning("ML model not loaded: %s", e)
@@ -50,8 +55,14 @@ def predict(age, data):
     """Second opinion for an adult patient with a blood-pressure reading; None otherwise."""
     if not _m["model"] or not data.get("bp_sys") or not data.get("bp_dia"):
         return None
-    row = [float(age or 27), float(data["bp_sys"]), float(data["bp_dia"]), float(data.get("glucose") or 7.0),
-           float(data.get("temp") or 36.7) * 9 / 5 + 32, float(data.get("pulse") or 76)]
+    row = [
+        float(age or 27),
+        float(data["bp_sys"]),
+        float(data["bp_dia"]),
+        float(data.get("glucose") or 7.0),
+        float(data.get("temp") or 36.7) * 9 / 5 + 32,
+        float(data.get("pulse") or 76),
+    ]
     proba = _m["model"].predict_proba([row])[0]
     best = max(range(len(proba)), key=lambda i: proba[i])
     assumed = [k for k in ("glucose", "temp", "pulse") if not data.get(k)]

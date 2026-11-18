@@ -1,6 +1,8 @@
 """Run: pytest -q  (works offline: VoiceLab is not required for these tests)."""
+
 import os
 import tempfile
+
 _tmp = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"  # never the real database
 os.environ["DATA_DIR"] = _tmp
@@ -25,8 +27,11 @@ def test_rules_zones():
 
 def test_quote_check_drops_inventions():
     text = "Sodiqova Dilnoza 1998 yil, bosimi 150/95, oyoqlarida shish bor"
-    raw = {"bp": {"value": "150/95", "quote": "bosimi 150/95"}, "hb": {"value": 90, "quote": "gemoglobin 90"},
-           "complaints": [{"code": "shish", "quote": "shish bor"}, {"code": "qon_ketish", "quote": "qon ketyapti"}]}
+    raw = {
+        "bp": {"value": "150/95", "quote": "bosimi 150/95"},
+        "hb": {"value": 90, "quote": "gemoglobin 90"},
+        "complaints": [{"code": "shish", "quote": "shish bor"}, {"code": "qon_ketish", "quote": "qon ketyapti"}],
+    }
     data, quotes, dropped = extract._clean(raw, text)
     assert data["bp_sys"] == 150 and data["complaints"] == ["shish"]
     assert "hb" in dropped and "complaints:qon_ketish" in dropped
@@ -68,8 +73,13 @@ def test_full_flow():
         c.post(f"/api/call/{call['token']}/answer", data={"qid": "harorat", "value": "38"})
         res = c.post(f"/api/call/{call['token']}/finish").json()
         assert res["zone"] == "red" and res["alert"]
-        v = c.post("/api/patients/confirm", json={"fields": {"full_name": "Test Bemor", "birth_year": 2000, "kind": "homilador", "bp_sys": 150, "bp_dia": 95,
-                                                                "complaints": ["shish"]}, "transcript": "x"}).json()
+        v = c.post(
+            "/api/patients/confirm",
+            json={
+                "fields": {"full_name": "Test Bemor", "birth_year": 2000, "kind": "homilador", "bp_sys": 150, "bp_dia": 95, "complaints": ["shish"]},
+                "transcript": "x",
+            },
+        ).json()
         assert v["created"] and v["zone"] == "yellow"
         assert c.get(f"/api/patients/{v['id']}/referral.pdf").content[:4] == b"%PDF"
 
@@ -79,3 +89,41 @@ def test_negation_is_not_a_complaint():
     assert r["data"].get("complaints", []) == []
     r = extract.extract("Хамидова Озода, 1991 год, температура 38,2, кровотечение, отёков нет")
     assert r["data"]["complaints"] == ["qon_ketish"]
+
+
+def test_red_zone_is_released_only_by_the_specialist():
+    with TestClient(app) as c:
+        p = c.post(
+            "/api/patients/confirm",
+            json={"fields": {"full_name": "Hold Test", "birth_year": 1999, "kind": "homilador", "bp_sys": 170, "bp_dia": 112}, "consent": True},
+        ).json()
+        assert p["zone"] == "red"
+        r = c.post(f"/api/patients/{p['id']}/observations", json={"bp_sys": 118, "bp_dia": 76}).json()
+        assert r["zone"] == "red" and r["reasons"][0]["code"] == "hold"  # normal numbers alone do not clear red
+        task = next(t for t in c.get(f"/api/patients/{p['id']}").json()["tasks"] if t["type"] == "mutaxassis")
+        c.post(f"/api/tasks/{task['id']}/done", json={"note": "ko'rildi"})
+        assert c.get(f"/api/patients/{p['id']}").json()["zone"] == "green"
+
+
+def test_consent_gates_calls_and_audit_is_written():
+    with TestClient(app) as c:
+        p = c.post("/api/patients/confirm", json={"fields": {"full_name": "Rozilik Test", "birth_year": 2001, "kind": "homilador"}}).json()
+        assert p["consent"] is False
+        assert c.post(f"/api/patients/{p['id']}/calls", json={"scenario": "homilador"}).status_code == 409
+        c.post(f"/api/patients/{p['id']}/consent", headers={"X-Role": "hamshira"})
+        assert c.post(f"/api/patients/{p['id']}/calls", json={"scenario": "homilador"}).status_code == 200
+        card = c.get(f"/api/patients/{p['id']}").json()
+        assert [a["action"] for a in card["audit"]][:2] == ["call_created", "consent_recorded"] and card["audit"][1]["role"] == "hamshira"
+
+
+def test_validation_lab_import_and_fhir():
+    with TestClient(app) as c:
+        assert c.post("/api/patients/confirm", json={"fields": {"full_name": "X", "bp_sys": 900}}).status_code == 422
+        p = c.get("/api/patients", params={"q": "Sodiqova Dilnoza"}).json()[0]
+        res = c.post("/api/import/lab", json={"csv": "full_name;birth_year;hb\nSodiqova Dilnoza;1998;64\nYo'q Odam;1990;100"}).json()
+        assert res["matched"] == 1 and res["not_found"] == ["Yo'q Odam"]
+        b = c.get(f"/api/patients/{p['id']}/fhir").json()
+        kinds = {e["resource"]["resourceType"] for e in b["entry"]}
+        assert {"Patient", "Observation", "RiskAssessment", "Task"} <= kinds
+        d = c.get("/api/dashboard", headers={"X-Role": "hamshira"}).json()
+        assert all(n["role"] == "hamshira" for n in d["notices"]) and d["doctors"]

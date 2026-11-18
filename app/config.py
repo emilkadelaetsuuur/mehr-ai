@@ -1,4 +1,5 @@
 """Runtime settings. Everything comes from the environment; nothing secret lives in code."""
+
 import os
 
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/nigoh.db")

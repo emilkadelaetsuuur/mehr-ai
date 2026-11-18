@@ -21,9 +21,53 @@ Umummilliy AI Xakaton, Toshkent bosqichi, «Tibbiyot» treki. Sog'liqni saqlash 
 Qo'ng'iroq ssenariylari — fayllar (`app/scenarios/*.json`): yangi bemor guruhi = yangi fayl, kod o'zgarmaydi.
 Chaqaloq ssenariysi JSST jadvaliga tayanadi: 3-kun, 7–14-kun, 6-hafta; savollar — chaqaloqdagi xavf belgilari.
 
+## Arxitektura
+
+```mermaid
+flowchart LR
+  subgraph Kirish
+    L[Laboratoriya: natija yoki CSV]
+    V[Hamshira ovozi, oflayn navbat]
+    C[AI qo'ng'iroqdagi javob]
+    D[Shifoxonadan chiqarish]
+  end
+  subgraph Yadro
+    R[(Reyestr: PostgreSQL)] --> Z[Qoidalar: rules.json -> zona + sabablar]
+    Z --> T[Vazifa: 24 soat, eskalatsiya]
+    T --> K[Bemor tasdig'i: AI qo'ng'iroq]
+  end
+  L & V & C & D --> R
+  T --> M[Mutaxassis] & F[Oilaviy shifokor]
+  K --> B[Rahbar: tuman ko'rsatkichlari, shifokorlar kesimi]
+  R --> X[FHIR R4 eksport: DMED bilan integratsiya uchun]
+```
+
+Qatlamlar bir-biridan ajratilgan:
+
+| Qatlam | Fayl | Vazifasi |
+|--------|------|----------|
+| HTTP | `app/api/*.py`, `app/schemas.py` | Marshrutlar va Pydantic tekshiruvi; biznes-mantiq yo'q |
+| Domen | `app/core.py` | Zonani qayta hisoblash, vazifalar, taymerlar, qo'ng'iroqlar, audit, CSV import |
+| Qoidalar | `app/rules.py`, `app/rules.json` | Izohlanadigan zona qoidalari; chegaralar faylda |
+| AI | `app/extract.py`, `app/voicelab.py`, `app/ml.py` | Ajratish + iqtibos tekshiruvi, STT/TTS/LLM mijozi, ML ikkinchi fikr |
+| Integratsiya | `app/fhir.py`, `app/pdfgen.py` | FHIR Bundle, yo'llanma PDF |
+| Ma'lumot | `app/db.py` | Modellar: patients, observations, risk_events, tasks, calls, notices, audit_log |
+| Interfeys | `web/` | PWA, o'zbekcha va ruscha, bemor uchun qo'ng'iroq sahifasi |
+
+## Biznes-qoidalar (kodda va testlarda)
+
+- **Zona ko'tarilishi avtomatik, qizil zonadan tushishi — faqat mutaxassis ko'rigidan keyin.** Yaxshi tahlil kelsa ham, ochiq «Mutaxassis ko'rigi» vazifasi yopilmaguncha bemor qizil zonada qoladi.
+- **Eskirgan o'lchovlar zonaga ta'sir qilmaydi** (`valid_days`, 45 kun).
+- **Rozilik bo'lmasa — qo'ng'iroq yo'q.** AI qo'ng'iroq faqat rozilik qayd etilgan bemorga yaratiladi (409 `consent`).
+- **Ikki tomonlama tasdiq.** Shifokor tashrifni belgilaydi → bemordan so'raladi → «kelmadi» javobi rahbarga nomuvofiqlik sifatida chiqadi.
+- **Hech kim jim qolmaydi.** 7 kun aloqa yo'q — sariq, 14 kun — qizil; qo'ng'iroqqa 3 marta javob bo'lmasa — hamshiraga uyga borish vazifasi.
+- **Muddat.** Vazifa 24 soatda yopilmasa, bir marta rahbarga eskalatsiya qilinadi (fon rejalashtiruvchi har daqiqada tekshiradi).
+- **Audit.** Bemorga tegishli har bir yozuv `audit_log` ga rol va amal bilan tushadi.
+- **Bildirishnomalar rol bo'yicha:** har kim o'zinikini, rahbar hammasini ko'radi.
+
 ## Texnologiyalar
 
-FastAPI · SQLAlchemy · PostgreSQL · Docker Compose · VoiceLab (STT, TTS, LLM) · scikit-learn · ReportLab · PWA (service worker + IndexedDB oflayn navbat) · build bosqichisiz JS.
+FastAPI · Pydantic · SQLAlchemy · PostgreSQL · Docker Compose · VoiceLab (STT, TTS, LLM) · scikit-learn · ReportLab · HL7 FHIR R4 · PWA (service worker + IndexedDB oflayn navbat) · ruff · pytest · GitHub Actions.
 
 ## Ishga tushirish
 
@@ -31,30 +75,23 @@ FastAPI · SQLAlchemy · PostgreSQL · Docker Compose · VoiceLab (STT, TTS, LLM
 cp .env.example .env        # VOICELAB_API_KEY va parollarni kiriting
 docker compose up -d --build
 docker compose exec app python -m scripts.eval   # kartani to'ldirish aniqligini o'lchash
-docker compose exec app pytest -q                # testlar (VoiceLab kerak emas)
+docker compose exec app pytest -q                # testlar (VoiceLab kerak emas, alohida SQLite bazada)
 ```
 
-Kalitsiz ham ishlaydi: nutq o'rniga matn kiritiladi, maydonlarni qoidalar ajratadi, qo'ng'iroqda tugmalar ishlaydi.
+API hujjati: `/api/docs`. Kalitsiz ham ishlaydi: nutq o'rniga matn kiritiladi, maydonlarni qoidalar ajratadi, qo'ng'iroqda tugmalar ishlaydi.
 
-## Tuzilishi
+## O'lchovlar
 
-```
-app/main.py        API
-app/core.py        zonalar, vazifalar, taymerlar, qo'ng'iroqlar, tashrif tasdig'i
-app/rules.py/.json izohlanadigan qoidalar va chegaralar
-app/extract.py     LLM ajratish + iqtibos tekshiruvi + zaxira parser
-app/voicelab.py    VoiceLab mijozi (STT / TTS / LLM)
-app/ml.py          ML ikkinchi fikr
-app/scenarios/     qo'ng'iroq ssenariylari
-web/               interfeys (o'zbekcha / ruscha), bemor uchun qo'ng'iroq sahifasi
-scripts/eval.py    aniqlik o'lchovi
-tests/             testlar
-```
+- Kartani to'ldirish: 20 ta o'zbek va rus iborasida 113 maydondan 113 tasi to'g'ri (`scripts/eval.py`; iboralar sozlashda ishlatilgan, haqiqiy yozuvlarda qayta o'lchash kerak).
+- ML ikkinchi fikr: 25% tekshiruv tanlanmasida aniqlik 83%, qizil zonani topish 87%.
+- Qo'ng'iroqdagi bitta javob: taxminan 1 soniya (STT + tasniflash).
 
 ## Chegaralar
 
 - Tashxis va davolash qarorini shifokor qabul qiladi; AI hisoblaydi, eslatadi, yetkazadi.
 - AI qo'ng'iroqda o'zini AI deb tanishtiradi, davolash bo'yicha maslahat bermaydi, xavf belgisida 103 ni aytadi.
 - Barcha ma'lumotlar sintetik. Ovoz yozuvi saqlanmaydi (transkripsiya olingach, o'chiriladi).
+- Kirish — bitta umumiy parol va rol tanlash: namoyish darajasi. Ishchi versiyada har bir xodim uchun alohida hisob (OneID/DMED) kerak.
+- Sxema o'zgarsa, sintetik baza qayta yaratiladi; ishchi versiyada Alembic migratsiyalari ishlatiladi.
 - Zona chegaralari — umumiy mo'ljal; yakuniy qiymatlarni shifokor milliy klinik protokol bo'yicha tasdiqlaydi.
 - Haqiqiy telefon tarmog'i (SIP) ulanmagan: namoyishda qo'ng'iroq havola yoki QR orqali ochiladi; dialog mantig'i bir xil.

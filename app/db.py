@@ -1,4 +1,5 @@
 """Database models. SQLite for local runs, PostgreSQL in production (same code)."""
+
 import os
 from datetime import datetime
 
@@ -38,6 +39,7 @@ class Patient(Base):
     reasons = Column(JSON, default=list)
     diagnosis = Column(String(240))  # as dictated by a doctor, never produced by AI
     discharged_at = Column(DateTime)
+    consent_at = Column(DateTime)  # consent to data processing and AI calls; no consent -> no calls
     last_contact_at = Column(DateTime, default=now)
     created_at = Column(DateTime, default=now)
     observations = relationship("Observation", back_populates="patient", cascade="all, delete-orphan")
@@ -113,5 +115,37 @@ class Notice(Base):
     created_at = Column(DateTime, default=now, index=True)
 
 
+class AuditLog(Base):
+    """Who did what: every write that touches a patient is recorded (role, action, short detail)."""
+
+    __tablename__ = "audit_log"
+    id = Column(Integer, primary_key=True)
+    at = Column(DateTime, default=now, index=True)
+    role = Column(String(20))
+    action = Column(String(40))
+    patient_id = Column(Integer, index=True)
+    detail = Column(String(400))
+
+
+class Meta(Base):
+    __tablename__ = "meta"
+    key = Column(String(40), primary_key=True)
+    value = Column(String(200))
+
+
+SCHEMA_VERSION = "3"
+
+
 def init_db():
+    """Create tables. The demo holds synthetic data only, so a schema change simply rebuilds it
+    (a real deployment would use Alembic migrations instead)."""
     Base.metadata.create_all(engine)
+    with SessionLocal() as db:
+        row = db.get(Meta, "schema")
+        if row and row.value == SCHEMA_VERSION:
+            return
+    Base.metadata.drop_all(engine)
+    Base.metadata.create_all(engine)
+    with SessionLocal() as db:
+        db.merge(Meta(key="schema", value=SCHEMA_VERSION))
+        db.commit()
