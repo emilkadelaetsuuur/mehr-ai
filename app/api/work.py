@@ -6,7 +6,7 @@ from sqlalchemy.orm import joinedload
 from .. import core, telephony
 from ..db import Call, Patient, Task
 from ..schemas import NoteIn
-from .deps import call_json, current_user, db_session, task_json
+from .deps import call_json, can_close, current_user, db_session, task_json
 
 router = APIRouter(prefix="/api")
 
@@ -32,6 +32,8 @@ def done(tid: int, body: NoteIn = NoteIn(), db=Depends(db_session), u=Depends(cu
     t = db.get(Task, tid)
     if not t or t.status != "ochiq":
         raise HTTPException(404, "task")
+    if not can_close(u, t):
+        raise HTTPException(403, "role")
     c = core.task_done(db, t, body.note)
     core.audit(db, u, "task_done", t.patient, f"{t.type}; bemor tasdig'i {'so`raladi' if c else 'yo`q: rozilik olinmagan'}")
     db.commit()

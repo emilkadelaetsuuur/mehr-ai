@@ -11,6 +11,7 @@
       accept: "Javob berish",
       decline: "Rad etish",
       listen: "Tinglayapman… javob bering",
+      tap: "Mikrofon ishlamayapti — javobni tugma bilan tanlang",
       wait: "Savol o'qilmoqda…",
       yes: "Ha",
       no: "Yo'q",
@@ -31,6 +32,7 @@
       accept: "Ответить",
       decline: "Отклонить",
       listen: "Слушаю… отвечайте",
+      tap: "Микрофон недоступен — выберите ответ кнопкой",
       wait: "Читаю вопрос…",
       yes: "Да",
       no: "Нет",
@@ -155,21 +157,37 @@
     box.innerHTML = `<div><div class="ai-note">${i + 1} / ${info.questions.length}</div><div class="avatar">N</div></div><div class="qtext">${esc(q.text)}</div>
       <div><div class="listen" id="st">${t.wait}</div><div class="bar"><i></i></div><div class="ans mt">${num ? `<button data-v="idk">${t.idk}</button>` : `<button data-v="yes">${t.yes}</button><button data-v="no">${t.no}</button>`}</div>
       <div class="heard mt" id="heard"></div></div><div class="ai-note">${t.ai}</div>`;
-    let btn = null;
-    box.querySelectorAll("[data-v]").forEach(
-      (b) =>
-        (b.onclick = () => {
-          btn = b.dataset.v;
-          record.cancel = true;
-          record.stop && record.stop();
-          player.pause();
-          player.onended && player.onended();
-        }),
-    );
+    let btn = null,
+      blob = null,
+      tapped = () => {};
+    const choose = (v) => {
+      btn = v;
+      record.cancel = true;
+      record.stop && record.stop();
+      player.pause();
+      player.onended && player.onended();
+      tapped();
+    };
+    box.querySelectorAll("[data-v]").forEach((b) => (b.onclick = () => choose(b.dataset.v)));
     await play(q.id, q.text);
-    if (btn === null) {
+    if (btn === null && stream) {
       document.getElementById("st").textContent = t.listen;
-      var blob = await record(num ? 8000 : 7000);
+      blob = await record(num ? 8000 : 7000);
+    } else if (btn === null) {
+      // no microphone (refused or absent): the question waits for a tap instead of rushing on as "unclear"
+      document.getElementById("st").textContent = t.tap;
+      document.querySelector(".bar").style.display = "none";
+      if (num) {
+        const row = document.createElement("div");
+        row.className = "ans mt";
+        row.innerHTML = `<input id="nv" type="number" inputmode="decimal" step="0.1" style="width:120px;font-size:18px;text-align:center;border-radius:12px;padding:10px"><button id="ns">${t.send}</button>`;
+        box.querySelector(".ans").after(row);
+        document.getElementById("ns").onclick = () => document.getElementById("nv").value && choose(document.getElementById("nv").value);
+      }
+      await new Promise((res) => {
+        tapped = res;
+        setTimeout(res, 45000);
+      });
     }
     if (btn !== null) pending.push(post(q.id, null, btn === "idk" ? "" : btn));
     else if (blob && blob.size > 800)

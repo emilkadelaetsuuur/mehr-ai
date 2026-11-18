@@ -26,6 +26,26 @@ def current_user(request: Request, db=Depends(db_session), x_role: str = Header(
     return db.query(User).filter(User.role == (x_role if x_role in ROLES else "rahbar")).first()
 
 
+def require(*roles: str):
+    """Dependency: the signed-in account must hold one of these roles."""
+
+    def check(u: User = Depends(current_user)) -> User:
+        if u.role not in roles:
+            raise HTTPException(403, "role")
+        return u
+
+    return check
+
+
+def can_close(u: User, task) -> bool:
+    """The head closes any task; others only tasks of their role, a family doctor only for own patients."""
+    if u.role == "rahbar":
+        return True
+    if u.role != task.role:
+        return False
+    return not (u.role == "shifokor" and u.doctor_name and task.patient and task.patient.doctor != u.doctor_name)
+
+
 def get_patient(db, pid: int) -> Patient:
     p = db.get(Patient, pid)
     if not p:

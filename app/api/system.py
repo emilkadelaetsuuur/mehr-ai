@@ -2,20 +2,22 @@
 
 import io
 import json
+import logging
 import os
 import time
 
 import qrcode
 import qrcode.image.svg
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import event
 
 from .. import auth, config, core, ml, rules, seed, telegram, telephony, voicelab
 from ..db import AuditLog, Notice, Patient, SessionLocal, User
 from ..schemas import LabImportIn, LoginIn, PasswordIn
-from .deps import brief, current_user, db_session, iso
+from .deps import brief, current_user, db_session, iso, require
 
 router = APIRouter(prefix="/api")
+log = logging.getLogger("nigoh.auth")
 _dash = {"at": 0.0, "data": None}
 
 
@@ -30,10 +32,17 @@ def health():
 
 
 @router.post("/login")
-def login(body: LoginIn, response: Response, db=Depends(db_session)):
-    user = db.query(User).filter(User.username == body.username.strip().lower()).first()
-    if config.DEMO_PASSWORD and not (user and auth.check_password(body.password, user.password_hash)):
+def login(body: LoginIn, request: Request, response: Response, db=Depends(db_session)):
+    ip = request.client.host if request.client else "-"
+    if auth.throttled(ip):
+        raise HTTPException(429, "too_many")
+    username, password = body.username.strip().lower(), auth.clean_password(body.password)
+    user = db.query(User).filter(User.username == username).first()
+    if config.DEMO_PASSWORD and not (user and auth.check_password(password, user.password_hash)):
+        auth.note_failure(ip)
+        log.warning("sign-in refused: account=%r reason=%s", username[:40], auth.failure_hint(user, password))
         raise HTTPException(401, "wrong")
+    auth.clear_failures(ip)
     if user:
         response.set_cookie(
             auth.COOKIE,
@@ -66,9 +75,12 @@ def me(u=Depends(current_user)):
 
 @router.post("/me/password")
 def change_password(body: PasswordIn, db=Depends(db_session), u=Depends(current_user)):
-    if not auth.check_password(body.old, u.password_hash):
+    new = auth.clean_password(body.new)
+    if not auth.check_password(auth.clean_password(body.old), u.password_hash):
         raise HTTPException(400, "wrong")
-    u.password_hash = auth.hash_password(body.new)
+    if len(new) < 6:
+        raise HTTPException(422, "short")
+    u.password_hash = auth.hash_password(new)
     core.audit(db, u, "password_changed")
     db.commit()
     return {"ok": True}
@@ -115,7 +127,9 @@ def dashboard(db=Depends(db_session), u=Depends(current_user)):
 
 
 @router.get("/audit")
-def audit_log(patient_id: int = 0, db=Depends(db_session)):
+def audit_log(patient_id: int = 0, db=Depends(db_session), u=Depends(current_user)):
+    if not patient_id and u.role != "rahbar":  # the district-wide journal is for the head only
+        raise HTTPException(403, "role")
     q = db.query(AuditLog)
     if patient_id:
         q = q.filter(AuditLog.patient_id == patient_id)
@@ -126,7 +140,7 @@ def audit_log(patient_id: int = 0, db=Depends(db_session)):
 
 
 @router.post("/import/lab")
-def import_lab(body: LabImportIn, db=Depends(db_session), u=Depends(current_user)):
+def import_lab(body: LabImportIn, db=Depends(db_session), u=Depends(require("rahbar", "mutaxassis"))):
     res = core.import_lab(db, body.csv)
     core.audit(db, u, "lab_import", None, f"{res['matched']}/{res['rows']} qator, {len(res['changed'])} zona o'zgardi")
     db.commit()
@@ -144,7 +158,7 @@ def qr(u: str):
 
 
 @router.post("/demo/reset")
-def reset(db=Depends(db_session), u=Depends(current_user)):
+def reset(db=Depends(db_session), u=Depends(require("rahbar"))):
     n = seed.run(db)
     core.audit(db, u, "demo_reset", None, f"{n} bemor")
     db.commit()

@@ -149,6 +149,51 @@ def test_personal_accounts_and_doctor_scope(monkeypatch):
         assert c.post("/api/login", json={"username": "shifokor", "password": "yangi-parol"}).status_code == 200
 
 
+def test_sign_in_forgives_paste_noise_but_not_a_wrong_password(monkeypatch):
+    from app import auth, config
+
+    with TestClient(app) as c:
+        monkeypatch.setattr(config, "DEMO_PASSWORD", "yoqilgan")  # auth on; demo accounts were created with "demo"
+        auth._failures.clear()
+        # spaces and invisible characters around a pasted password are ignored; the account name ignores case
+        assert c.post("/api/login", json={"username": " Rahbar ", "password": "  demo​ \n"}).status_code == 200
+        assert c.get("/api/me").json()["role"] == "rahbar"
+        c.post("/api/logout")
+        for bad in ("Demo", "пароль", "", "demo1"):  # letter case matters; non-ASCII is a wrong password, not a crash
+            assert c.post("/api/login", json={"username": "rahbar", "password": bad}).status_code == 401
+        assert c.post("/api/login", json={"username": "nobody", "password": "demo"}).status_code == 401
+        for stale in ("eski-versiya-cookie", "1.2.3", "1.99999999999.0000"):  # foreign or forged cookies never sign in
+            c.cookies.set("nigoh_auth", stale)
+            assert c.get("/api/me").status_code == 401
+        c.cookies.clear()
+        auth._failures.clear()
+        for _ in range(auth.MAX_FAILURES):  # a burst of wrong passwords is slowed down...
+            assert c.post("/api/login", json={"username": "rahbar", "password": "xato"}).status_code == 401
+        assert c.post("/api/login", json={"username": "rahbar", "password": "demo"}).status_code == 429
+        auth._failures.clear()  # ...and the window passes
+        assert c.post("/api/login", json={"username": "rahbar", "password": "demo"}).status_code == 200
+
+
+def test_roles_limit_what_an_account_may_do():
+    with TestClient(app) as c:
+        nurse, doctor = {"X-Role": "hamshira"}, {"X-Role": "shifokor"}  # the demo family doctor is Qosimova D.
+        mine = c.get("/api/patients", params={"q": "Valiyeva Madina"}).json()[0]
+        other = next(p for p in c.get("/api/patients").json() if p["doctor"] not in (None, "Qosimova D.") and p["kind"] == "homilador")
+        t_mine = c.post(f"/api/patients/{mine['id']}/discharge", json={}).json()
+        t_other = c.post(f"/api/patients/{other['id']}/discharge", json={}).json()
+        assert c.post("/api/demo/reset", headers=nurse).status_code == 403
+        assert c.post("/api/import/lab", json={"csv": "full_name,hb\nX,100"}, headers=nurse).status_code == 403
+        assert c.get("/api/audit", headers=nurse).status_code == 403
+        assert c.get(f"/api/audit?patient_id={mine['id']}", headers=nurse).status_code == 200
+        assert c.post(f"/api/tasks/{t_mine['id']}/done", json={}, headers=nurse).status_code == 403  # not the nurse's task
+        assert c.post(f"/api/tasks/{t_other['id']}/done", json={}, headers=doctor).status_code == 403  # another doctor's patient
+        assert c.post(f"/api/tasks/{t_mine['id']}/done", json={}, headers=doctor).status_code == 200
+        assert c.post(f"/api/tasks/{t_other['id']}/done", json={}).status_code == 200  # the head of the district may close any
+        # a laboratory row with an impossible value is reported, not stored
+        res = c.post("/api/import/lab", json={"csv": "full_name,hb\nValiyeva Madina,999\nValiyeva Madina,abc"}).json()
+        assert res["matched"] == 0 and res["invalid"] == ["Valiyeva Madina", "Valiyeva Madina"]
+
+
 def test_phone_line_twiml_and_telegram_binding():
     from app import telegram
     from app.db import SessionLocal, User

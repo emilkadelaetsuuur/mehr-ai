@@ -10,6 +10,7 @@ from sqlalchemy.orm import joinedload
 
 from . import config, rules, telegram
 from .db import AuditLog, Call, Notice, Observation, Patient, RiskEvent, Task
+from .schemas import Vitals
 
 HERE = os.path.dirname(__file__)
 SCENARIOS = {}
@@ -162,7 +163,9 @@ def discharge(db, patient, note=""):
         f"FAOL CHAQIRUV: {patient.full_name} ({patient.mahalla}) shifoxonadan chiqarildi. {config.ACTIVE_CALL_HOURS} soat ichida ko'rib, tasdiqlang.",
         f"АКТИВНЫЙ ВЫЗОВ: {patient.full_name} ({patient.mahalla}) выписана. Осмотрите и подтвердите в течение {config.ACTIVE_CALL_HOURS} часов.",
     )
-    if not patient.consent_at:
+    scenario = "chaqaloq_30kun" if patient.kind == "chaqaloq" else "chiqarishdan_keyin"
+    planned = any(c.scenario == scenario and c.status == "rejalashtirilgan" for c in patient.calls)
+    if not patient.consent_at or planned:  # no consent -> no calls; a repeated discharge does not double the schedule
         return t
     if patient.kind == "chaqaloq":
         base = patient.born_at or now()
@@ -409,7 +412,7 @@ def import_lab(db, text):
     import io
 
     rows = list(csv.DictReader(io.StringIO(text.strip()), delimiter=";" if text.count(";") > text.count(",") else ","))
-    res = {"rows": len(rows), "matched": 0, "not_found": [], "changed": []}
+    res = {"rows": len(rows), "matched": 0, "not_found": [], "invalid": [], "changed": []}
     for r in rows[:2000]:
         row = {LAB_COLUMNS[k.strip().lower()]: (v or "").strip() for k, v in r.items() if k and k.strip().lower() in LAB_COLUMNS}
         name = row.get("full_name", "")
@@ -420,13 +423,11 @@ def import_lab(db, text):
         if not p:
             res["not_found"].append(name or "?")
             continue
-        data = {}
-        for k in NUM:
-            try:
-                if row.get(k):
-                    data[k] = float(row[k].replace(",", "."))
-            except ValueError:
-                pass
+        try:  # the same plausibility limits as for a result typed by hand
+            data = Vitals(**{k: row[k].replace(",", ".") for k in NUM if row.get(k)}).values()
+        except ValueError:
+            res["invalid"].append(name)
+            continue
         if not data:
             continue
         old = p.zone

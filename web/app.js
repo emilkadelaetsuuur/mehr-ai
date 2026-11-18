@@ -27,9 +27,17 @@
       showLogin();
       throw new Error("auth");
     }
+    if (r.status === 403) throw new Error(t("forbidden"));
     if (!r.ok) throw new Error((await r.text()).slice(0, 200) || r.status);
     return r.json();
   }
+  // What the signed-in role may do; the server enforces the same rules.
+  const can = {
+    reset: () => S.role === "rahbar",
+    lab: () => S.role === "rahbar" || S.role === "mutaxassis",
+    close: (x) =>
+      S.role === "rahbar" || (S.role === x.role && !(S.role === "shifokor" && S.me?.doctor && x.patient?.doctor && x.patient.doctor !== S.me.doctor)),
+  };
   function toast(msg, ms = 3200) {
     document.querySelectorAll(".toast").forEach((e) => e.remove());
     const d = document.createElement("div");
@@ -119,28 +127,66 @@
     };
   }
   function showLogin() {
+    S.timers.forEach(clearInterval);
+    S.timers = [];
+    closeModal();
     $("#nav").innerHTML = "";
-    $("#top").innerHTML = `<span class="logo"><span class="dots"><i></i><i></i><i></i></span>Nigoh</span>`;
-    const accounts = S.meta?.accounts || [];
-    $("#app").innerHTML = `<div class="card" style="max-width:380px;margin:60px auto"><h2>${t("login_h")}</h2><p class="small">${t("tagline")}</p>
-      <label>${t("account")}</label><select id="un">${accounts.map((a) => `<option value="${esc(a.username)}">${esc(a.name)} (${esc(a.username)})</option>`).join("")}</select>
-      <label class="mt">${t("password")}</label><input id="pw" type="password" autofocus><div class="mt"><button class="btn" id="go">${t("enter")}</button></div></div>`;
-    const go = async () => {
+    $("#top").innerHTML = `<span class="logo"><span class="dots"><i></i><i></i><i></i></span>Nigoh</span><span class="sp"></span><button id="lang">${S.lang === "uz" ? "RU" : "UZ"}</button>`;
+    $("#lang").onclick = () => {
+      S.lang = localStorage.lang = S.lang === "uz" ? "ru" : "uz";
+      document.documentElement.lang = S.lang;
+      showLogin();
+    };
+    const accounts = S.meta?.accounts || [],
+      last = localStorage.account || "";
+    // a real form: the browser can save the password, Enter submits, the phone keyboard does not capitalise
+    $("#app").innerHTML = `<form class="card login" id="lf" novalidate><h2>${t("login_h")}</h2><p class="small">${t("tagline")}</p>
+      <label for="un">${t("account")}</label>${
+        accounts.length
+          ? `<select id="un" name="username" autocomplete="username">${accounts.map((a) => `<option value="${esc(a.username)}" ${a.username === last ? "selected" : ""}>${esc(a.name)} (${esc(a.username)})</option>`).join("")}</select>`
+          : `<input id="un" name="username" type="text" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" value="${esc(last)}">`
+      }
+      <label class="mt" for="pw">${t("password")}</label>
+      <div class="pwrow"><input id="pw" name="password" type="password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false"><button type="button" class="btn ghost sm" id="eye">${t("pw_show")}</button></div>
+      <p class="err" id="lerr" role="alert" hidden></p>
+      <div class="mt"><button class="btn" id="go" type="submit">${t("enter")}</button></div></form>`;
+    const fail = (key) => {
+      $("#lerr").textContent = t(key);
+      $("#lerr").hidden = false;
+    };
+    $("#eye").onclick = () => {
+      const shown = $("#pw").type === "text";
+      $("#pw").type = shown ? "password" : "text";
+      $("#eye").textContent = t(shown ? "pw_show" : "pw_hide");
+      $("#pw").focus();
+    };
+    $("#lf").onsubmit = async (e) => {
+      e.preventDefault();
+      if ($("#go").disabled) return;
+      if (!$("#pw").value.trim()) return fail("pw_empty");
+      $("#go").disabled = true;
+      $("#lerr").hidden = true;
+      let status = 0;
       try {
-        await fetch("/api/login", {
+        const r = await fetch("/api/login", {
           method: "POST",
+          credentials: "same-origin",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ username: $("#un").value, password: $("#pw").value }),
-        }).then((r) => {
-          if (!r.ok) throw 0;
         });
-        await boot();
+        status = r.status;
       } catch {
-        toast(t("wrong"));
+        status = 0; // no connection
       }
+      if (status === 200) {
+        localStorage.account = $("#un").value;
+        return boot();
+      }
+      $("#go").disabled = false;
+      fail(status === 401 ? "wrong" : status === 429 ? "too_many" : "login_down");
+      if (status === 401) $("#pw").select();
     };
-    $("#go").onclick = go;
-    $("#pw").onkeydown = (e) => e.key === "Enter" && go();
+    $("#pw").focus();
   }
 
   /* ---------- registry ---------- */
@@ -158,7 +204,7 @@
       </div>
       <div class="grid two">
         <div class="card"><div class="row-b"><h2>${t("patients")} · ${ps.length}</h2><span class="sp" style="flex:1"></span>
-            <input id="q" type="text" placeholder="${t("search")}" value="${esc(f.q)}" style="max-width:200px"><button class="btn sm ghost" id="lab">${t("lab_btn")}</button></div>
+            <input id="q" type="text" placeholder="${t("search")}" value="${esc(f.q)}" style="max-width:200px">${can.lab() ? `<button class="btn sm ghost" id="lab">${t("lab_btn")}</button>` : ""}</div>
           <div class="chips">${chip("zone", "", t("all"))}${chip("zone", "red", t("zred"))}${chip("zone", "yellow", t("zyellow"))}${chip("zone", "green", t("zgreen"))}
             <span style="width:8px"></span>${chip("kind", "homilador", t("homilador"))}${chip("kind", "tuqqan", t("tuqqan"))}${chip("kind", "chaqaloq", t("chaqaloq"))}
             ${f.silent ? `<span class="chip on" data-k="silent" data-v="0">${t("k_silent")} ✕</span>` : ""}</div>
@@ -202,7 +248,7 @@
       f.q = e.target.value.trim();
       home();
     };
-    $("#lab").onclick = () => labImport(home);
+    if ($("#lab")) $("#lab").onclick = () => labImport(home);
     $("#app").onclick = (e) => {
       const c = e.target.closest("[data-k]"),
         k = e.target.closest("[data-f]"),
@@ -232,7 +278,7 @@
     const m = S.meta.complaints[c];
     return m
       ? L(m)
-      : { unclear: t("unclear"), tashrif_tasdiqlanmadi: t("s_nomuvofiq"), noanswer: t("c_javobsiz"), ahvol: "ahvol", dori: "dori", fikr: "fikr" }[
+      : { unclear: t("unclear"), tashrif_tasdiqlanmadi: t("s_nomuvofiq"), noanswer: t("c_javobsiz"), ahvol: t("f_ahvol"), dori: t("f_dori"), fikr: t("f_fikr") }[
           c
         ] || c;
   };
@@ -254,7 +300,7 @@
       <span class="badge ${x.status === "ochiq" ? (x.escalated ? "z-red" : "z-yellow") : x.status === "nomuvofiq" ? "z-red" : x.status === "tasdiqlandi" ? "z-green" : "z-info"}">${t("s_" + x.status)}</span></div>
       ${withP && x.patient ? `<div><a href="#/bemor/${x.patient.id}"><b>${esc(x.patient.name)}</b></a> ${zb(x.patient.zone)} <span class="small">${esc(x.patient.mahalla || "")} · ${esc(x.patient.phone || "")}</span></div>` : ""}
       <div class="small">${esc(x.reason || "")}</div><div class="row-b mt" style="justify-content:space-between"><span>${timer(x.due_at, x.status) || `<span class="small">${dt(x.done_at)}</span>`}</span>
-      ${x.status === "ochiq" ? `<button class="btn sm" data-done="${x.id}">${t("mark_done")}</button>` : ""}</div></div>`;
+      ${x.status === "ochiq" && can.close(x) ? `<button class="btn sm" data-done="${x.id}">${t("mark_done")}</button>` : ""}</div></div>`;
   const callRow = (
     c,
     withP,
@@ -267,7 +313,7 @@
           ? Object.entries(c.answers || {})
               .map(
                 ([k, a]) =>
-                  `<div class="small">${esc(k)}: <b>${a.value === "yes" ? t("yes") : a.value === "no" ? t("no") : (a.value ?? t("unclear"))}</b>${a.transcript ? ` — <span class="quote">${esc(a.transcript)}</span>` : ""}</div>`,
+                  `<div class="small">${esc(k)}: <b>${a.value === "yes" ? t("yes") : a.value === "no" ? t("no") : a.value == null || a.value === "unclear" ? t("unclear") : esc(a.value)}</b>${a.transcript ? ` — <span class="quote">${esc(a.transcript)}</span>` : ""}</div>`,
               )
               .join("")
           : `<div class="mt"><button class="btn sm ghost" data-call='${esc(JSON.stringify({ url: c.url, id: c.id }))}'>${t("begin")}</button></div>`
@@ -299,7 +345,7 @@
     $("#lgo").onclick = async () => {
       const r = await api("/import/lab", { json: { csv: $("#csv").value } });
       $("#lres").innerHTML =
-        `<b>${r.matched}/${r.rows} ${t("lab_res")}: ${r.changed.length}</b>${r.changed.map((c) => `<div><a href="#/bemor/${c.id}" data-close>${esc(c.name)}</a>: ${zb(c.from)} → ${zb(c.to)}</div>`).join("")}${r.not_found.length ? `<div class="small">? ${r.not_found.map(esc).join(", ")}</div>` : ""}`;
+        `<b>${r.matched}/${r.rows} ${t("lab_res")}: ${r.changed.length}</b>${r.changed.map((c) => `<div><a href="#/bemor/${c.id}" data-close>${esc(c.name)}</a>: ${zb(c.from)} → ${zb(c.to)}</div>`).join("")}${r.not_found.length ? `<div class="small">? ${r.not_found.map(esc).join(", ")}</div>` : ""}${r.invalid?.length ? `<div class="small">⚠ ${t("lab_invalid")}: ${r.invalid.map(esc).join(", ")}</div>` : ""}`;
       after && after();
     };
   }
@@ -610,13 +656,14 @@
             : `<p class="small">${t("eval_none")}</p>`
         }</div>
       <div class="card"><h2>${t("law_h")}</h2><ol class="steps">${[1, 2, 3, 4].map((i) => `<li>${t("law_" + i)}</li>`).join("")}</ol></div>
-      <div class="card"><button class="btn ghost" id="rs">${t("reset")}</button></div></div></div>`;
-    $("#rs").onclick = async () => {
-      if (confirm(t("sure"))) {
-        await api("/demo/reset", { method: "POST" });
-        toast(t("reset_ok"));
-      }
-    };
+      ${can.reset() ? `<div class="card"><button class="btn ghost" id="rs">${t("reset")}</button></div>` : ""}</div></div>`;
+    if ($("#rs"))
+      $("#rs").onclick = async () => {
+        if (confirm(t("sure"))) {
+          await api("/demo/reset", { method: "POST" });
+          toast(t("reset_ok"));
+        }
+      };
   }
 
   /* ---------- router ---------- */
@@ -639,7 +686,16 @@
   }
   async function boot() {
     document.documentElement.lang = S.lang;
-    S.meta = await fetch("/api/meta").then((r) => r.json());
+    try {
+      const r = await fetch("/api/meta");
+      if (!r.ok) throw new Error(r.status);
+      S.meta = await r.json();
+    } catch {
+      // the server did not answer: say so and let the user retry instead of an endless "loading"
+      $("#app").innerHTML = `<div class="card login"><h2>${t("login_down")}</h2><div class="mt"><button class="btn" id="retry">${t("retry")}</button></div></div>`;
+      $("#retry").onclick = boot;
+      return;
+    }
     try {
       S.me = await api("/me");
       if (S.meta.auth) S.role = S.me.role;
@@ -651,5 +707,10 @@
     flushQueue();
     if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {});
   }
+  // a failed button action must be visible, not silent
+  window.addEventListener("unhandledrejection", (e) => {
+    const msg = e.reason?.message;
+    if (msg && msg !== "auth") toast(msg, 5000);
+  });
   boot();
 })();

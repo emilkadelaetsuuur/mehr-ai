@@ -63,6 +63,7 @@ Qatlamlar bir-biridan ajratilgan:
 - **Hech kim jim qolmaydi.** 7 kun aloqa yo'q — sariq, 14 kun — qizil; qo'ng'iroqqa 3 marta javob bo'lmasa — hamshiraga uyga borish vazifasi.
 - **Muddat.** Vazifa 24 soatda yopilmasa, bir marta rahbarga eskalatsiya qilinadi (fon rejalashtiruvchi har daqiqada tekshiradi).
 - **Shaxsiy hisoblar.** Har bir xodim o'z logini bilan kiradi (parol — tuzli PBKDF2 xesh, sessiya — imzolangan cookie). Rol hisobdan olinadi; oilaviy shifokor faqat o'z bemorlarining vazifalarini ko'radi.
+- **Huquqlar rol bo'yicha.** Vazifani o'sha rol egasi (oilaviy shifokor — faqat o'z bemori bo'yicha) yoki rahbar yopadi; laboratoriya importi — rahbar va mutaxassis; namoyish ma'lumotlarini qayta yaratish va umumiy jurnal — faqat rahbar. Server shu qoidalarni tekshiradi, interfeys ruxsat etilmagan tugmalarni ko'rsatmaydi. Parol atrofidagi bo'shliqlar e'tiborga olinmaydi; ketma-ket noto'g'ri urinishlar vaqtincha cheklanadi.
 - **Audit.** Bemorga tegishli har bir yozuv `audit_log` ga hisob, rol va amal bilan tushadi.
 - **Bildirishnomalar rol bo'yicha:** har kim o'zinikini, rahbar hammasini ko'radi. Sariq va qizil xabarlar Telegram'ga ham boradi: xodim profilidagi havola orqali o'z chatini bir martalik kod bilan ulaydi (`TELEGRAM_BOT_TOKEN` kerak).
 - **Oddiy telefon raqamiga qo'ng'iroq.** `app/telephony.py` — Twilio bilan mos ovozli API uchun adapter: o'sha ssenariy fayli, savol audiosi `<Play>`, javob `<Record>` → STT. `TWILIO_*` sozlanmasa, qo'ng'iroq havola yoki QR orqali ochiladi.

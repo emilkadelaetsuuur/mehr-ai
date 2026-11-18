@@ -55,3 +55,5 @@ textarea{min-height:84px;resize:vertical}label{font-size:12.5px;color:var(--mute
 .ans{display:flex;gap:14px;justify-content:center}.ans button{border:2px solid rgba(255,255,255,.6);background:transparent;color:#fff;border-radius:14px;padding:14px 26px;font-size:18px;font-weight:700;min-width:110px}
 .listen{font-size:14px;opacity:.85;min-height:22px}.bar{height:6px;width:220px;background:rgba(255,255,255,.18);border-radius:9px;overflow:hidden;margin:10px auto}.bar i{display:block;height:100%;width:0;background:#3fb27f;transition:width .1s}
 .heard{font-size:14px;opacity:.9;min-height:20px}.ai-note{font-size:12px;opacity:.7}
+.login{max-width:380px;margin:60px auto}.pwrow{display:flex;gap:8px;align-items:stretch}.pwrow input{flex:1;min-width:0}.pwrow .btn{white-space:nowrap}
+.err{color:var(--red);font-weight:600;margin:10px 0 0}.err[hidden]{display:none}

@@ -40,11 +40,48 @@ def read_session(cookie: str):
     """Return the user id from a valid, unexpired cookie, else None."""
     try:
         uid, exp, sig = (cookie or "").split(".")
-        if hmac.compare_digest(sig, _sign(f"{uid}.{exp}")) and int(exp) > time.time():
+        if hmac.compare_digest(sig.encode(), _sign(f"{uid}.{exp}").encode()) and int(exp) > time.time():
             return int(uid)
-    except ValueError:
+    except ValueError:  # malformed or foreign cookie (including one left by an older version)
         pass
     return None
+
+
+def clean_password(password: str) -> str:
+    """Spaces and invisible characters around a password come from copy-paste, never from intent."""
+    return (password or "").strip().strip("​‌‍﻿").strip()
+
+
+# Sign-in throttle: a burst of wrong passwords from one address is slowed down, not locked out for long.
+MAX_FAILURES, WINDOW_SEC = 20, 300
+_failures: dict[str, list[float]] = {}
+
+
+def throttled(ip: str) -> bool:
+    recent = [t for t in _failures.get(ip, []) if t > time.time() - WINDOW_SEC]
+    _failures[ip] = recent
+    return len(recent) >= MAX_FAILURES
+
+
+def note_failure(ip: str):
+    _failures.setdefault(ip, []).append(time.time())
+    if len(_failures) > 5000:  # never grow without bound
+        _failures.clear()
+
+
+def clear_failures(ip: str):
+    _failures.pop(ip, None)
+
+
+def failure_hint(user, password: str) -> str:
+    """Why a sign-in failed, for the server log only. Never contains the password itself."""
+    if not user:
+        return "unknown-account"
+    if not password:
+        return "empty-password"
+    if password != password.lower() and check_password(password.lower(), user.password_hash):
+        return "letter-case"
+    return f"mismatch(len={len(password)})"
 
 
 def ensure_users(db):
