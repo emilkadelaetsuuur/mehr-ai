@@ -194,6 +194,11 @@ def task(t, patient, label):
     }
 
 
+def consent(patient, what, at):
+    """A consent the patient gave, so that DMED knows what this system may do on her behalf."""
+    return {"resourceType": "Consent", "status": "active", "category": [{"text": what}], "subject": subject(patient), "date": iso(at)[:10]}
+
+
 def immunization(patient, code, at, reported=False):
     """A dose of the calendar. `reported`: a parent said so in a call, the vaccination room has not confirmed it."""
     r = {

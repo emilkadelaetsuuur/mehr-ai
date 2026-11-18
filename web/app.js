@@ -111,6 +111,7 @@
   // a vaccination that has come due. Which confidential group it is, the server tells only to those who may know.
   const marksOf = (p) =>
     (p.marks || []).map((m) => `<span class="badge mark ${m.secret ? "z-red" : "z-info"}">${esc(L(m))}</span>`).join("") +
+    ((p.marks || []).length ? `<span class="badge mark ${p.private_consent ? "z-green" : "z-yellow"}">${t(p.private_consent ? "pc_yes" : "pc_no")}</span>` : "") +
     (p.in_hospital ? `<span class="badge mark z-red">${t("b_hospital")}</span>` : "") +
     (p.vax ? `<span class="badge mark ${p.vax === "overdue" ? "z-red" : "z-yellow"}">${t(p.vax === "overdue" ? "b_vax_over" : "b_vax_due")}</span>` : "");
   const stayRow = (s, withP) =>
@@ -432,6 +433,7 @@
         <div class="mt"><span class="badge ${p.consent ? "z-green" : "z-yellow"}">${t(p.consent ? "consent_yes" : "consent_no")}</span>${p.consent ? "" : ` <button class="btn sm ghost" id="bcons">${t("consent_btn")}</button>`}</div>
         ${p.diagnosis || p.icd10 ? `<div class="mt"><span class="small">${t("diagnosis")}:</span> ${esc([p.icd10, p.diagnosis].filter(Boolean).join(" · "))}</div>` : ""}
         ${(p.marks || []).some((m) => m.code === "maxfiy") ? `<div class="mt small">${t("secret_note")}</div>` : ""}
+        ${(p.marks || []).length ? `<div class="mt small">${p.private_consent_at ? `${t("pc_card")}: <b>${dt(p.private_consent_at)}</b>` : t("pc_card_no")}${!p.private_consent_at && p.may_record_private ? ` <button class="btn sm ghost" id="bpc">${t("pc_btn")}</button>` : ""}</div>` : ""}
         ${p.pinfl || p.parity === 0 ? `<div class="mt small">${p.pinfl ? "PINFL: " + esc(p.pinfl) : ""}${p.parity === 0 ? (p.pinfl ? " · " : "") + t("first_child") : ""}</div>` : ""}
         ${p.mother ? `<div class="mt small">${t("mother")}: <a href="#/bemor/${p.mother.id}">${esc(p.mother.name)}</a></div>` : ""}
         ${p.children.length ? `<div class="mt small">${t("children")}: ${p.children.map((k) => `<a href="#/bemor/${k.id}">${esc(k.name)}</a> ${zb(k.zone)}`).join(", ")}</div>` : ""}
@@ -499,6 +501,12 @@
         patient(id);
       };
     if ($("#bdmed")) $("#bdmed").onclick = () => dmedEvent(p, () => patient(id));
+    if ($("#bpc"))
+      $("#bpc").onclick = async () => {
+        if (!confirm(t("pc_sure"))) return;
+        await api(`/patients/${id}/consent/private`, { method: "POST" });
+        patient(id);
+      };
     $("#bdis").onclick = async () => {
       await api(`/patients/${id}/discharge`, { json: {} });
       toast(t("discharge_done"));

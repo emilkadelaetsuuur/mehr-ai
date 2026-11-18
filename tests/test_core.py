@@ -930,6 +930,7 @@ def test_a_confidential_group_is_marked_for_doctors_and_never_named_in_a_call():
     import json
 
     from app import talk
+    from app.db import Patient, SessionLocal
 
     assert talk.year_matches("1990", 1990) == "yes" and talk.year_matches("to'qson, 90", 1990) == "yes" and talk.year_matches("1985", 1990) == "no"
     assert talk.year_matches("bilmayman", 1990) == "unclear" and talk.year_matches("", 1990) == "unclear"
@@ -951,6 +952,22 @@ def test_a_confidential_group_is_marked_for_doctors_and_never_named_in_a_call():
         assert any(x["id"] == pid for x in find(nurse, group="any"))  # that there is follow-up is no secret to staff
         (open_one,) = find(nurse, q="Rahimov Botir")  # a group that is not confidential is shown to everyone
         assert [m["code"] for m in open_one["marks"]] == ["gipertoniya"]
+
+        # A call about confidential follow-up needs the patient's own, separate consent. He has given it, and it shows.
+        assert seen["private_consent"] and c.get(f"/api/patients/{pid}", headers=expert).json()["private_consent_at"]
+        fresh = {"full_name": "Maxfiy Sinov", "birth_year": 1988, "kind": "boshqa", "doctor": "Qosimova D."}
+        new = c.post("/api/patients/confirm", json={"fields": fresh, "consent": True}).json()  # the general consent only
+        assert c.post(f"/api/patients/{new['id']}/consent/private", headers=expert).status_code == 400  # not under follow-up at all
+        with SessionLocal() as db:
+            db.get(Patient, new["id"]).groups = ["gepatit"]
+            db.commit()
+        before = c.get("/api/calls/audience", params={"scenario": "dispanser"}).json()
+        assert c.post(f"/api/patients/{new['id']}/calls", json={"scenario": "dispanser"}).json() == {"detail": "consent"}  # no consent, no call
+        assert c.post(f"/api/patients/{new['id']}/consent/private", headers=nurse).status_code == 403  # the nurse may not know the diagnosis
+        assert c.post(f"/api/patients/{new['id']}/consent/private", headers=expert).json()["private_consent"] is True
+        after = c.get("/api/calls/audience", params={"scenario": "dispanser"}).json()
+        assert (after["fit"], after["no_consent"]) == (before["fit"] + 1, before["no_consent"] - 1)
+        assert c.post(f"/api/patients/{new['id']}/calls", json={"scenario": "dispanser"}).status_code == 200
 
         (call,) = c.post("/api/calls/round", json={"scenario": "dispanser", "test": True}).json()["calls"]
         assert call["patient"]["name"] == "Toshmatov Sardor"

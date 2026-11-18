@@ -222,6 +222,8 @@ def run(db, n=300, seed=7):
             doctor=rnd.choice(DOCS),
             zone="green",
             consent_at=now,
+            # most gave the separate consent to calls about their follow-up; a few have not been asked yet
+            private_consent_at=None if rnd.random() < 0.15 else now - timedelta(days=rnd.randint(5, 300)),
             last_contact_at=now - timedelta(days=rnd.randint(0, 30)),
             created_at=now - timedelta(days=rnd.randint(60, 900)),
             pinfl=pinfl(),
@@ -378,6 +380,7 @@ def run(db, n=300, seed=7):
     f = Patient(
         full_name="Toshmatov Sardor", kind="boshqa", sex="m", birth_year=1990, groups=["oiv"], icd10="B20", mahalla="Istiqlol", phone="+998 95 567-89-01"
     )
+    e.private_consent_at = f.private_consent_at = now - timedelta(days=30)  # both agreed to calls about their follow-up
     for x in (d, e, f):
         x.doctor, x.zone, x.consent_at, x.last_contact_at, x.created_at = "Qosimova D.", "green", now, now, now - timedelta(days=300)
     db.add_all([d, e, f])

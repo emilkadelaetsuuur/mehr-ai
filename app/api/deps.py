@@ -124,6 +124,7 @@ def brief(p, u=None):
         "top": (p.reasons or [None])[0],
         "born_at": iso(p.born_at),
         "consent": bool(p.consent_at),
+        "private_consent": bool(p.private_consent_at),  # agreed to calls about confidential dispensary follow-up
     }
 
 

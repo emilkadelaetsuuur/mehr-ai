@@ -3,7 +3,7 @@
 import os
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, create_engine
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Integer, String, Text, create_engine, inspect, text
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 
 from . import config
@@ -46,6 +46,8 @@ class Patient(Base):
     diagnosis = Column(String(240))  # as dictated by a doctor, never produced by AI
     discharged_at = Column(DateTime)
     consent_at = Column(DateTime)  # consent to data processing and AI calls; no consent -> no calls
+    # A separate consent: to be called about confidential dispensary follow-up. Without it no such call is made.
+    private_consent_at = Column(DateTime)
     last_contact_at = Column(DateTime, default=now)
     created_at = Column(DateTime, default=now)
     observations = relationship("Observation", back_populates="patient", cascade="all, delete-orphan")
@@ -216,6 +218,16 @@ def init_db():
     """Create tables. The demo holds synthetic data only, so a schema change simply rebuilds it
     (a real deployment would use Alembic migrations instead)."""
     Base.metadata.create_all(engine)
+    if "private_consent_at" not in {c["name"] for c in inspect(engine).get_columns("patients")}:
+        # A column added without rebuilding the data. The synthetic patients already under dispensary follow-up
+        # are marked as having given this consent together with the general one; a real patient gives it herself.
+        with engine.begin() as conn:
+            conn.execute(text("ALTER TABLE patients ADD COLUMN private_consent_at TIMESTAMP"))
+        with SessionLocal() as db:
+            for p in db.query(Patient).filter(Patient.consent_at.isnot(None)):
+                if p.groups:
+                    p.private_consent_at = p.consent_at
+            db.commit()
     with SessionLocal() as db:
         row = db.get(Meta, "schema")
         if row and row.value == SCHEMA_VERSION:

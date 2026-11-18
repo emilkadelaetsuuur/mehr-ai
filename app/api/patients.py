@@ -5,7 +5,7 @@ from datetime import timedelta
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import selectinload
 
-from .. import config, core, fhir, ml, pdfgen, rules, vaccines
+from .. import config, core, dmed, fhir, ml, pdfgen, rules, vaccines
 from ..db import AuditLog, DmedMessage, Hospitalization, Patient
 from ..schemas import CallIn, ConfirmIn, NoteIn, ObservationIn
 from .deps import brief, call_json, current_user, db_session, get_patient, iso, masked, sees_all, snapshot, task_json
@@ -107,6 +107,8 @@ def patient_card(pid: int, db=Depends(db_session), u=Depends(current_user)):
             "diagnosis": None if hide else p.diagnosis,
             "icd10": None if hide else p.icd10,
             "pinfl": p.pinfl,
+            "private_consent_at": iso(p.private_consent_at),
+            "may_record_private": sees_all(u, p),
             "parity": p.parity,
             "scenarios": [s for s in core.SCENARIOS if s != "tashrif_tasdiq" and core.fits(p, s)],  # the calls that may be made to this patient
             "stays": [
@@ -186,6 +188,24 @@ def consent(pid: int, db=Depends(db_session), u=Depends(current_user)):
     core.audit(db, u, "consent_recorded", p, "Ma'lumotlarni qayta ishlash va AI qo'ng'iroqlarga rozilik")
     db.commit()
     return {"consent": True}
+
+
+@router.post("/{pid}/consent/private")
+def private_consent(pid: int, db=Depends(db_session), u=Depends(current_user)):
+    """The patient's own consent to be called about confidential dispensary follow-up. It is recorded by
+    someone who may know the diagnosis: the specialist, the head, or the doctor the patient is attached to."""
+    p = get_patient(db, pid)
+    if not sees_all(u, p):
+        raise HTTPException(403, "role")
+    if not p.groups:
+        raise HTTPException(400, "no dispensary group")
+    p.consent_at = p.consent_at or core.now()
+    p.private_consent_at = p.private_consent_at or core.now()
+    what = "Dispanser nazorati bo'yicha AI qo'ng'iroqlarga va maxfiy ma'lumotni qayta ishlashga rozilik"
+    core.audit(db, u, "private_consent_recorded", p, what)
+    dmed.push(db, "Consent: maxfiy nazorat", p, dmed.consent(p, what, p.private_consent_at), "rozilik qayd etildi")
+    db.commit()
+    return {"private_consent": True, "at": iso(p.private_consent_at)}
 
 
 @router.post("/{pid}/calls")

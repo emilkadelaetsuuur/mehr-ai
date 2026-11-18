@@ -153,8 +153,14 @@ def add_observation(db, patient, source, data, quotes=None, text="", author="", 
     return recompute(db, patient)
 
 
+def allowed(patient, scenario):
+    """True when the patient has agreed to this kind of call. Every AI call needs the general consent; a call
+    about confidential dispensary follow-up needs a consent of its own, recorded separately."""
+    return bool(patient.consent_at) and (not SCENARIOS[scenario].get("private") or bool(patient.private_consent_at))
+
+
 def create_call(db, patient, scenario, task_id=None, planned_at=None, context=None):
-    if not patient.consent_at:
+    if not allowed(patient, scenario):
         raise ConsentRequired(patient.full_name)
     if context is None:
         context = call_context(patient, scenario)
@@ -244,9 +250,13 @@ def audience(db, scenario, zone=""):
     silence come first."""
     rows = reachable(db, scenario, zone)
     busy = {pid for (pid,) in db.query(Call.patient_id).filter(Call.scenario == scenario, Call.status.in_(UNFINISHED))}
-    fit = [p for p in rows if p.consent_at and p.id not in busy]
+    fit = [p for p in rows if allowed(p, scenario) and p.id not in busy]
     fit.sort(key=lambda p: (-rules.ORDER.get(p.zone or "green", 0), p.last_contact_at or now()))
-    return {"fit": fit, "no_consent": sum(1 for p in rows if not p.consent_at), "already": sum(1 for p in rows if p.consent_at and p.id in busy)}
+    return {
+        "fit": fit,
+        "no_consent": sum(1 for p in rows if not allowed(p, scenario)),
+        "already": sum(1 for p in rows if allowed(p, scenario) and p.id in busy),
+    }
 
 
 def start_round(db, scenario, lang=None, zone="", limit=10):
@@ -269,8 +279,8 @@ def trial_call(db, scenario, lang=None):
     if c:
         c.lang = lang or p.lang or "uz"
         return c
-    if p and not fits(p, scenario):
-        p = None  # the prepared patient is not one this scenario is for (any more): somebody it is for will do
+    if p and not (fits(p, scenario) and allowed(p, scenario)):
+        p = None  # the prepared patient is not one this scenario is for (any more), or has not agreed: somebody else will do
     p = p or (fit[0] if fit else None)
     if not p:
         return None
