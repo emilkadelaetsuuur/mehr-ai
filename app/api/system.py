@@ -14,18 +14,16 @@ from sqlalchemy import event
 from .. import auth, closing, config, core, ml, rules, seed, simline, telegram, telephony, voicelab
 from ..db import AuditLog, Notice, Patient, SessionLocal, User
 from ..schemas import LabImportIn, LoginIn, PasswordIn
-from .deps import brief, current_user, db_session, iso, require
+from .deps import brief, current_user, db_session, iso, require, snapshot
 
 router = APIRouter(prefix="/api")
 log = logging.getLogger("nigoh.auth")
 _dash = {"at": 0.0, "data": None}
-_pages = {}  # role -> (when, finished JSON of the summary page)
 
 
 @event.listens_for(SessionLocal, "after_commit")
 def _invalidate(_session):
     _dash["data"] = None  # any write makes the cached district summary stale
-    _pages.clear()
 
 
 @router.get("/health")
@@ -118,23 +116,22 @@ def meta(db=Depends(db_session)):
 
 @router.get("/dashboard")
 def dashboard(db=Depends(db_session), u=Depends(current_user)):
-    hit = _pages.get(u.role)
-    if hit and time.time() - hit[0] < 3:  # every open registry asks for this every few seconds
-        return Response(hit[1], media_type="application/json")
-    if _dash["data"] is None or time.time() - _dash["at"] > 5:
-        _dash["data"], _dash["at"] = core.dashboard(db), time.time()
-    d = dict(_dash["data"])
-    q = db.query(Notice)
-    if u.role != "rahbar":  # everyone sees their own notices; the head of the district sees all
-        q = q.filter(Notice.role == u.role)
-    d["notices"] = [
-        {"id": n.id, "level": n.level, "role": n.role, "uz": n.text_uz, "ru": n.text_ru, "at": iso(n.created_at), "patient_id": n.patient_id}
-        for n in q.order_by(Notice.id.desc()).limit(25)
-    ]
-    d["demo"] = [brief(p) for n in ("Sodiqova Dilnoza", "Valiyeva Madina", "Valiyev Amir") for p in db.query(Patient).filter(Patient.full_name == n).limit(1)]
-    out = json.dumps(d, ensure_ascii=False).encode()
-    _pages[u.role] = (time.time(), out)
-    return Response(out, media_type="application/json")
+    def build():
+        if _dash["data"] is None or time.time() - _dash["at"] > 5:
+            _dash["data"], _dash["at"] = core.dashboard(db), time.time()
+        d = dict(_dash["data"])
+        q = db.query(Notice)
+        if u.role != "rahbar":  # everyone sees their own notices; the head of the district sees all
+            q = q.filter(Notice.role == u.role)
+        d["notices"] = [
+            {"id": n.id, "level": n.level, "role": n.role, "uz": n.text_uz, "ru": n.text_ru, "at": iso(n.created_at), "patient_id": n.patient_id}
+            for n in q.order_by(Notice.id.desc()).limit(25)
+        ]
+        names = ("Sodiqova Dilnoza", "Valiyeva Madina", "Valiyev Amir")
+        d["demo"] = [brief(p) for n in names for p in db.query(Patient).filter(Patient.full_name == n).limit(1)]
+        return d
+
+    return snapshot(("dashboard", u.role), build)
 
 
 @router.get("/audit")

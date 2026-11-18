@@ -6,7 +6,7 @@ from sqlalchemy.orm import joinedload
 from .. import core, simline, telephony
 from ..db import Call, Patient, Task
 from ..schemas import DialIn, NoteIn, RoundIn
-from .deps import call_json, can_close, current_user, db_session, task_json
+from .deps import call_json, can_close, current_user, db_session, snapshot, task_json
 
 router = APIRouter(prefix="/api")
 
@@ -14,16 +14,20 @@ router = APIRouter(prefix="/api")
 @router.get("/tasks")
 def tasks(status: str = "", db=Depends(db_session), u=Depends(current_user)):
     """The head sees every task; others see their role's queue; a family doctor sees only their own patients."""
-    qs = db.query(Task).options(joinedload(Task.patient))
-    if status:
-        qs = qs.filter(Task.status == status)
-    if u.role != "rahbar":
-        qs = qs.filter(Task.role == u.role)
-        if u.role == "shifokor" and u.doctor_name:
-            qs = qs.join(Patient, Task.patient_id == Patient.id).filter(Patient.doctor == u.doctor_name)
-    rows = qs.order_by(Task.due_at.asc()).limit(300).all()
-    rows.sort(key=lambda t: (t.status != "ochiq", t.due_at or core.now()))
-    return [task_json(t) for t in rows]
+
+    def build():
+        qs = db.query(Task).options(joinedload(Task.patient))
+        if status:
+            qs = qs.filter(Task.status == status)
+        if u.role != "rahbar":
+            qs = qs.filter(Task.role == u.role)
+            if u.role == "shifokor" and u.doctor_name:
+                qs = qs.join(Patient, Task.patient_id == Patient.id).filter(Patient.doctor == u.doctor_name)
+        rows = qs.order_by(Task.due_at.asc()).limit(300).all()
+        rows.sort(key=lambda t: (t.status != "ochiq", t.due_at or core.now()))
+        return [task_json(t) for t in rows]
+
+    return snapshot(("tasks", status, u.role, u.doctor_name), build)
 
 
 @router.post("/tasks/{tid}/done")
@@ -42,8 +46,11 @@ def done(tid: int, body: NoteIn = NoteIn(), db=Depends(db_session), u=Depends(cu
 
 @router.get("/calls")
 def calls(db=Depends(db_session)):
-    rows = db.query(Call).options(joinedload(Call.patient)).order_by(Call.planned_at.desc()).limit(150).all()
-    return [call_json(c) for c in rows]
+    def build():
+        rows = db.query(Call).options(joinedload(Call.patient)).order_by(Call.planned_at.desc()).limit(150).all()
+        return [call_json(c) for c in rows]
+
+    return snapshot(("calls",), build)
 
 
 @router.get("/calls/audience")

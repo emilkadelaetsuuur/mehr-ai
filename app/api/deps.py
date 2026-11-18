@@ -1,11 +1,33 @@
 """Shared pieces of the HTTP layer: database session, caller role, JSON views of the models."""
 
-from fastapi import Depends, Header, HTTPException, Request
+import json
+import time
+
+from fastapi import Depends, Header, HTTPException, Request, Response
+from sqlalchemy import event
 
 from .. import config, core
 from ..db import Patient, SessionLocal, User
 
 ROLES = ("rahbar", "mutaxassis", "shifokor", "hamshira")
+_snapshots = {}  # key -> (when, finished JSON)
+
+
+@event.listens_for(SessionLocal, "after_commit")
+def _forget_snapshots(_session):
+    _snapshots.clear()  # anything written to the database makes every copy stale
+
+
+def snapshot(key, build, seconds=3):
+    """The finished JSON of a list that many screens ask for every few seconds. It is built once and served
+    to all of them until it is `seconds` old or anything is written to the database: twenty open screens,
+    or one runaway tab, cost one computation instead of twenty."""
+    hit = _snapshots.get(key)
+    if not hit or time.time() - hit[0] >= seconds:
+        if len(_snapshots) > 300:
+            _snapshots.clear()
+        hit = _snapshots[key] = (time.time(), json.dumps(build(), ensure_ascii=False).encode())
+    return Response(hit[1], media_type="application/json")
 
 
 def db_session():
