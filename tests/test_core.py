@@ -785,6 +785,10 @@ def test_dmed_reports_a_hospital_stay_and_gets_the_call_back(monkeypatch):
         assert any(t["type"] == "faol_chaqiruv" and t["status"] == "ochiq" for t in full["tasks"])
         (call,) = [k for k in full["calls"] if k["status"] == "rejalashtirilgan"]
         assert call["scenario"] == "chiqarish_yurak"  # the questions written for this diagnosis
+        assert full["scenarios"] == ["chiqarish_yurak"]  # ...and no other call may be made to her
+        for wrong in ("chiqarish_nafas", "chiqarish_umumiy", "homilador", "emlash", "dispanser"):
+            assert c.post(f"/api/patients/{p['id']}/calls", json={"scenario": wrong}).status_code == 409
+        assert c.get("/api/calls/audience", params={"scenario": "chiqarish_nafas"}).json()["fit"] == 0  # nobody left with such a diagnosis
         info = c.get(f"/api/call/{call['token']}").json()
         assert "Shifoxonadan chiqqaningizdan keyin" in info["intro"] and "infarkt" not in info["intro"] + info["hello"]  # the diagnosis is not said aloud
         assert [q["id"] for q in info["questions"]] == ["kokrak", "nafas", "shish", "dori"]

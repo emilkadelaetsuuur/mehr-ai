@@ -200,8 +200,8 @@ def fits(patient, scenario):
         return patient.kind in vaccines.CHILD and bool(vaccines.owed(patient, now()))
     if who == "dispanser":
         return bool(patient.groups)
-    if who == "shifoxona":
-        return patient.discharged_at is not None
+    if who == "shifoxona":  # after a hospital: only the questions written for the diagnosis she left with
+        return patient.discharged_at is not None and after_hospital(patient, patient.icd10 or "") == scenario
     return True
 
 
@@ -224,6 +224,8 @@ def reachable(db, scenario, zone=""):
         rows = [p for p in rows if vaccines.owed(p, now())]
     elif who == "dispanser":
         rows = [p for p in rows if p.groups]
+    elif who == "shifoxona":
+        rows = [p for p in rows if after_hospital(p, p.icd10 or "") == scenario]
     return rows
 
 
@@ -302,7 +304,7 @@ def discharge(db, patient, note="", stay=None):
         f"FAOL CHAQIRUV: {patient.full_name} ({patient.mahalla}) shifoxonadan chiqarildi{about}. {config.ACTIVE_CALL_HOURS} soat ichida ko'rib, tasdiqlang.",
         f"АКТИВНЫЙ ВЫЗОВ: {patient.full_name} ({patient.mahalla}) выписана{about}. Осмотрите и подтвердите в течение {config.ACTIVE_CALL_HOURS} часов.",
     )
-    scenario = after_hospital(patient, stay.icd10 if stay else "")
+    scenario = after_hospital(patient, (stay.icd10 if stay else patient.icd10) or "")
     planned = any(c.scenario == scenario and c.status == "rejalashtirilgan" for c in patient.calls)
     if not patient.consent_at or planned:  # no consent -> no calls; a repeated discharge does not double the schedule
         return t
