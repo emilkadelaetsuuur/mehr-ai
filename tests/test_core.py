@@ -713,6 +713,27 @@ def test_a_call_names_the_patient_and_answers_her_questions_from_the_leaflet(mon
         assert c.post(f"/api/call/{k['token']}/ask", data={"text": "yana bir savol"}).status_code == 400  # the call is over
 
 
+def test_a_runaway_tab_is_told_to_sign_in_again(monkeypatch):
+    """A tab that asks for one list far more often than any screen does (an old copy of the interface whose
+    timers piled up) is told to sign in again: that makes the interface drop its timers. Other lists, other
+    browsers and the next window are not affected."""
+    from app import config, main
+
+    key = ("browser-a", "/api/calls")
+    assert not any(main.runaway(key, now=100 + i / 100) for i in range(main.RUNAWAY))  # no screen comes near this
+    assert main.runaway(key, now=101) and main.runaway(key, now=105)
+    assert not main.runaway(("browser-b", "/api/calls"), now=105) and not main.runaway(("browser-a", "/api/tasks"), now=105)
+    assert not main.runaway(key, now=100 + main.WINDOW)  # a new window starts clean
+
+    with TestClient(app) as c:
+        monkeypatch.setattr(config, "DEMO_PASSWORD", "yoqilgan")
+        assert c.post("/api/login", json={"username": "hamshira", "password": "demo"}).status_code == 200
+        codes = [c.get("/api/calls").status_code for _ in range(main.RUNAWAY + 5)]
+        assert codes[: main.RUNAWAY] == [200] * main.RUNAWAY and codes[-1] == 401
+        assert c.get("/api/calls").json() == {"detail": "reload"}
+        assert c.get("/api/tasks").status_code == 200 and c.get("/api/me").status_code == 200  # only the flooded list is closed
+
+
 def test_frontend_script_is_complete():
     """Every screen the router opens, and the helpers they share, must be defined in the bundle."""
     import pathlib

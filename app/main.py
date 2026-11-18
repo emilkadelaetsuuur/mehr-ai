@@ -4,6 +4,7 @@ import hashlib
 import logging
 import os
 import threading
+import time
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -31,6 +32,28 @@ def _build():
 
 
 BUILD = _build()
+
+# A screen asks for its list again every 12-20 seconds. A tab still running an old copy of the interface can
+# ask thousands of times a minute: its refresh timers piled up (fixed since, but a tab that was never
+# reloaded keeps the old code). Such a tab is told to sign in again. The interface, old or new, answers that
+# by dropping all its timers and showing the sign-in form, so the flood stops and a reload brings the new code.
+LISTS = ("/api/calls", "/api/patients", "/api/dashboard", "/api/tasks")
+RUNAWAY, WINDOW = 40, 10  # more than this many requests for one list from one browser within these seconds
+_asked = {}  # (browser, list) -> [when the count began, how many since]
+
+
+def runaway(key, now=None):
+    """True when one browser asks for the same list far more often than any screen does."""
+    now = time.monotonic() if now is None else now
+    slot = _asked.get(key)
+    if not slot or now - slot[0] >= WINDOW:
+        if len(_asked) > 2000:
+            _asked.clear()
+        slot = _asked[key] = [now, 0]
+    slot[1] += 1
+    if slot[1] == RUNAWAY + 1:
+        log.warning("a runaway tab asked for %s more than %s times in %ss: told to sign in again", key[1], RUNAWAY, WINDOW)
+    return slot[1] > RUNAWAY
 
 
 def scheduler():
@@ -82,6 +105,8 @@ async def session_guard(request: Request, call_next):
     guarded = config.DEMO_PASSWORD and path.startswith("/api/") and not path.startswith(OPEN_PATHS)
     if guarded and request.state.uid is None:
         return JSONResponse({"detail": "auth"}, status_code=401)
+    if guarded and request.method == "GET" and path in LISTS and runaway((request.cookies.get(auth.COOKIE, ""), path)):
+        return JSONResponse({"detail": "reload"}, status_code=401)
     resp = await call_next(request)
     if path.endswith((".html", ".js", ".css")) or path == "/" or path.startswith("/call/"):
         resp.headers["Cache-Control"] = "no-cache"
