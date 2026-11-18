@@ -13,7 +13,7 @@
   const T = {
     uz: {
       incoming: "Kiruvchi qo'ng'iroq",
-      from: "Poliklinika · Nigoh AI yordamchi",
+      from: "Poliklinika · Mehr AI yordamchi",
       accept: "Javob berish",
       decline: "Rad etish",
       listen: "Tinglayapman… javob bering",
@@ -33,6 +33,7 @@
       again: "Qayta qo'ng'iroq",
       oper: "Operator bilan gaplashish",
       oper_h: "So'rovingiz qabul qilindi",
+      doc_h: "Shifokorga xabar berildi",
       call_now: "Hozir qo'ng'iroq qilish:",
       ask_h: "Sizning savolingiz",
       no_q: "Savolim yo'q",
@@ -45,7 +46,7 @@
     },
     ru: {
       incoming: "Входящий звонок",
-      from: "Поликлиника · ИИ-помощник Nigoh",
+      from: "Поликлиника · ИИ-помощник Mehr AI",
       accept: "Ответить",
       decline: "Отклонить",
       listen: "Слушаю… отвечайте",
@@ -65,6 +66,7 @@
       again: "Позвонить снова",
       oper: "Поговорить с сотрудником",
       oper_h: "Запрос принят",
+      doc_h: "Врач уже предупреждён",
       call_now: "Позвонить сейчас:",
       ask_h: "Ваш вопрос",
       no_q: "Вопросов нет",
@@ -202,7 +204,7 @@
   // `q.to` names where the answer goes when the question is not one of the scenario's (the identity check).
   async function ask(q, label) {
     const num = q.type === "number";
-    box.innerHTML = `<div><div class="ai-note">${label}</div><div class="avatar">N</div></div><div class="qtext">${esc(q.text)}</div>
+    box.innerHTML = `<div><div class="ai-note">${label}</div><div class="avatar">M</div></div><div class="qtext">${esc(q.text)}</div>
       <div><div class="listen" id="st">${t.wait}</div><div class="bar"><i></i></div><div class="ans mt">${num ? `<button data-v="idk">${t.idk}</button>` : `<button data-v="yes">${t.yes}</button><button data-v="no">${t.no}</button>`}</div>
       <div class="heard mt" id="heard"></div><button class="oper" id="op">☎ ${t.oper}</button></div><div class="ai-note">${t.ai}</div>`;
     let btn = null,
@@ -267,9 +269,10 @@
       .catch(() => ({}));
     await Promise.all(pending);
     fetch(`/api/call/${token}/finish?quiet=1`, { method: "POST" }).catch(() => {});
-    box.innerHTML = `<div><div class="avatar">☎</div><h1>${t.oper_h}</h1></div><div class="qtext">${esc(info.say.operator_ok)}</div>
+    const key = r.doctor && info.say.doctor_ok ? "doctor_ok" : "operator_ok";
+    box.innerHTML = `<div><div class="avatar">☎</div><h1>${r.doctor ? t.doc_h : t.oper_h}</h1></div><div class="qtext">${esc(info.say[key])}</div>
       <div>${r.phone ? `<a class="oper" href="tel:${r.phone.replace(/[^+\d]/g, "")}">${t.call_now} ${esc(r.phone)}</a>` : ""}</div><div class="ai-note">${t.ai}</div>`;
-    await say("operator_ok");
+    await say(key);
     hangUp();
   }
 
@@ -307,7 +310,7 @@
   async function goodbye(key) {
     await Promise.all(pending);
     if (key === "who_fail") fetch(`/api/call/${token}/noanswer`, { method: "POST" }).catch(() => {});
-    box.innerHTML = `<div><div class="avatar">N</div><h1>${t.done}</h1></div><div class="qtext">${esc(info.say[key])}</div><div class="ai-note">${t.ai}</div>`;
+    box.innerHTML = `<div><div class="avatar">M</div><h1>${t.done}</h1></div><div class="qtext">${esc(info.say[key])}</div><div class="ai-note">${t.ai}</div>`;
     await play("say_" + key, info.say[key]);
     hangUp();
   }
@@ -322,7 +325,7 @@
       let pick = null,
         got = false,
         tapped = () => {};
-      box.innerHTML = `<div><div class="ai-note">${t.ask_h}</div><div class="avatar ring">N</div></div><div class="qtext">${esc(info.say[key])}</div>
+      box.innerHTML = `<div><div class="ai-note">${t.ask_h}</div><div class="avatar ring">M</div></div><div class="qtext">${esc(info.say[key])}</div>
         <div>${stream ? `<div class="listen" id="st">${t.wait}</div><div class="bar"><i></i></div>` : `<textarea id="msg" rows="3" placeholder="${t.type_here}"></textarea>`}
         <div class="ans mt"><button data-v="none">${t.no_q}</button><button data-v="done">${stream ? t.finish : t.send}</button></div>
         <button class="oper" id="op">☎ ${t.oper}</button></div><div class="ai-note">${t.ai}</div>`;
@@ -363,7 +366,7 @@
       }
       if (pick === "operator") return { operator: true };
       if (pick === "none" || !got) return;
-      box.innerHTML = `<div><div class="avatar ring">N</div></div><div class="qtext">${t.proc}</div><div class="ai-note">${t.ai}</div>`;
+      box.innerHTML = `<div><div class="avatar ring">M</div></div><div class="qtext">${t.proc}</div><div class="ai-note">${t.ai}</div>`;
       const reply = fetch(`/api/call/${token}/ask`, { method: "POST", body: fd })
         .then((x) => x.json())
         .catch(() => ({}));
@@ -388,7 +391,7 @@
         r.source && r.source.length ? `${t.src}: ${esc(r.source.join("; "))}` : "",
         r.to ? `${r.to === "hamshira" ? t.to_nurse : t.to_doctor}${r.doctor ? ": " + esc(r.doctor) : ""}` : "",
       ].filter(Boolean);
-      box.innerHTML = `<div><div class="ai-note">${t.heard}: «${esc(r.transcript)}»</div><div class="avatar">${r.kind === "alarm" ? "!" : r.kind === "answer" ? "N" : "✓"}</div></div>
+      box.innerHTML = `<div><div class="ai-note">${t.heard}: «${esc(r.transcript)}»</div><div class="avatar">${r.kind === "alarm" ? "!" : r.kind === "answer" ? "M" : "✓"}</div></div>
         <div class="qtext">${esc(r.kind === "answer" ? r.answer : info.say[fixed])}</div><div class="ai-note">${notes.join(" · ") || t.ai}</div>`;
       if (r.kind === "answer") {
         // spoken sentence by sentence: the later ones are synthesised while the first plays
@@ -417,7 +420,7 @@
       ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
       if (ctx.state === "suspended") await ctx.resume();
       fetch(src("hello")).catch(() => {});
-      box.innerHTML = `<div><div class="avatar ring">N</div></div><div class="qtext">…</div><div></div>`;
+      box.innerHTML = `<div><div class="avatar ring">M</div></div><div class="qtext">…</div><div></div>`;
       await onLine("ready");
       for (;;) {
         const r = await fetch(`/api/call/${token}/line`)
@@ -440,7 +443,15 @@
       if (born.operator) return operator(born.said);
       if (born.value !== "yes") return goodbye(born.value === "no" ? "who_year_no" : "who_fail");
     }
-    box.innerHTML = `<div><div class="avatar ring">N</div><h1>Nigoh</h1></div><div class="qtext">${esc(info.intro)}</div><div class="ai-note">${t.ai}</div>`;
+    if (info.protected) {
+      const privacy=await ask({id:"privacy",type:"yesno",to:"privacy",audio:"privacy",text:info.private_question},"Mehr AI");
+      if (privacy.operator) return operator(privacy.said);
+      if (privacy.value!=="yes") return goodbye("private_later");
+      const updated=await fetch("/api/call/"+token,{cache:"no-store"});
+      if(!updated.ok) return goodbye("who_fail");
+      info=await updated.json();
+    }
+    box.innerHTML = `<div><div class="avatar ring">M</div><h1>Mehr AI</h1></div><div class="qtext">${esc(info.intro)}</div><div class="ai-note">${t.ai}</div>`;
     await play("intro", info.intro);
     await say("hint");
     let human = null,
@@ -466,7 +477,7 @@
     if (!human && info.tips) human = (await tips()) || null;
     if (!human) human = (await talk()) || null;
     if (human) return operator(human.said);
-    box.innerHTML = `<div><div class="avatar">N</div></div><div class="qtext">${t.proc}</div><div></div>`;
+    box.innerHTML = `<div><div class="avatar">M</div></div><div class="qtext">${t.proc}</div><div></div>`;
     const finished = Promise.all(pending)
       .then(() => fetch(`/api/call/${token}/finish`, { method: "POST" }))
       .then((r) => r.json())
@@ -502,9 +513,9 @@
       return;
     }
     // The greeting names the patient, so it cannot be prepared for everyone in advance: it is made while the phone rings.
-    if (info.tts) ["hello", "intro"].forEach((part) => fetch(src(part)).catch(() => {}));
+    if (info.tts) (info.protected ? ["hello"] : ["hello", "intro"]).forEach((part) => fetch(src(part)).catch(() => {}));
     if (LINE) return run(); // the person has already picked up the phone: start talking
-    box.innerHTML = `<div><div class="ai-note">${t.incoming}</div><div class="avatar ring">N</div><h1>Nigoh</h1><div>${t.from}</div><div class="ai-note mt">${esc(info.title)}</div></div>
+    box.innerHTML = `<div><div class="ai-note">${t.incoming}</div><div class="avatar ring">M</div><h1>Mehr AI</h1><div>${t.from}</div><div class="ai-note mt">${esc(info.title)}</div></div>
       <div style="display:flex;gap:70px"><div><button class="cbtn dec" id="dec">✕</button><div class="ai-note mt">${t.decline}</div></div><div><button class="cbtn acc" id="acc">✆</button><div class="ai-note mt">${t.accept}</div></div></div><div class="ai-note">${t.ai}</div>`;
     document.body.addEventListener("pointerdown", () => ring(true), { once: true });
     document.getElementById("acc").onclick = run;

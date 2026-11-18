@@ -1,0 +1,30 @@
+@font-face{font-family:Manrope;src:url("/brand/manrope-cyrillic.woff2") format("woff2");font-weight:400 800;font-display:swap;unicode-range:U+0400-052F,U+2116}
+@font-face{font-family:Manrope;src:url("/brand/manrope-latin.woff2") format("woff2");font-weight:400 800;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+2000-206F,U+2190-21FF}
+@font-face{font-family:Unbounded;src:url("/brand/unbounded-cyrillic.woff2") format("woff2");font-weight:400 800;font-display:swap;unicode-range:U+0400-052F,U+2116}
+@font-face{font-family:Unbounded;src:url("/brand/unbounded-latin.woff2") format("woff2");font-weight:400 800;font-display:swap;unicode-range:U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+2000-206F,U+2190-21FF}
+:root {
+  --display: Unbounded, Arial, sans-serif;
+  --body: Manrope, Arial, sans-serif;
+  --navy: #03045e;
+  --ocean: #0077b6;
+  --cyan: #00b4d8;
+  --sky: #90e0ef;
+  --ice: #caf0f8;
+  --paper: #fff;
+  --body-ink: #20334e;
+  --secondary-ink: #496279;
+  --soft-ink: #60798b;
+  --edge: #b8d4e2;
+  --hairline: #d7e7ef;
+  --wash: #eef8fc;
+  --canvas: #f8fbfd;
+  --nav-hover: #152e7a;
+  --ink: var(--navy);
+  --nav-gap: clamp(8px, 1.25vw, 20px);
+  --nav-top: max(var(--nav-gap), env(safe-area-inset-top, 0px));
+  --nav-right: max(var(--nav-gap), env(safe-area-inset-right, 0px));
+  --nav-bottom: max(var(--nav-gap), env(safe-area-inset-bottom, 0px));
+  --nav-left: max(var(--nav-gap), env(safe-area-inset-left, 0px));
+  --nav-radius: clamp(19px, 2vw, 32px);
+  --nav-shadow: 0 4px 16px #03045e0a;
+}

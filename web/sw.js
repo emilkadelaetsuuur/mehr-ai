@@ -1,24 +1,28 @@
-// Offline shell: the app opens without internet; voice notes wait in a local queue (see app.js).
-const CACHE = "nigoh-v2",
-  SHELL = ["/", "/index.html", "/styles.css", "/i18n.js", "/app.js", "/icon.svg", "/manifest.json"];
-self.addEventListener("install", (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL)));
-  self.skipWaiting();
+// The offline cache contains only the public interface.
+const CACHE = "mehr-shell-v10";
+const SHELL = ["/", "/cabinet/", "/brand/type.css", "/brand/clinic.css", "/styles.css", "/home.css",
+  "/home.js", "/app.js", "/care-work.js", "/i18n.js", "/brand/mehr-wave-blue.svg", "/brand/physician.webp", "/brand/home-visit.webp", "/brand/home-visit-mobile.webp", "/brand/studio.css", "/voice-studio.js", "/brand/language.css", "/brand/language.js", "/brand/navigation.svg", "/brand/flag-ru.png", "/brand/flag-uz.png", "/manifest.json"];
+self.addEventListener("install", event => {
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(SHELL)).then(() => self.skipWaiting()));
 });
-self.addEventListener("activate", (e) => {
-  e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))));
-  self.clients.claim();
+self.addEventListener("activate", event => {
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(key =>
+    (key.startsWith("mehr-shell-") || key === "nigoh-v2") && key !== CACHE).map(key => caches.delete(key)))).then(() => self.clients.claim()));
 });
-self.addEventListener("fetch", (e) => {
-  const u = new URL(e.request.url);
-  if (e.request.method !== "GET" || u.pathname.startsWith("/api/") || u.pathname.startsWith("/call/")) return;
-  e.respondWith(
-    fetch(e.request)
-      .then((r) => {
-        const copy = r.clone();
-        caches.open(CACHE).then((c) => c.put(e.request, copy));
-        return r;
-      })
-      .catch(() => caches.match(e.request).then((r) => r || caches.match("/index.html"))),
-  );
+self.addEventListener("fetch", event => {
+  const url = new URL(event.request.url);
+  // Browsers seek in the short voice samples using byte ranges. CacheStorage only accepts full responses.
+  if (url.pathname.endsWith(".mp3") && event.request.headers.has("range")) return;
+  if (event.request.method !== "GET" || url.origin !== self.location.origin ||
+      !(SHELL.includes(url.pathname) || url.pathname.startsWith("/brand/"))) return;
+  event.respondWith((async () => {
+    const cache = await caches.open(CACHE);
+    try {
+      const response = await fetch(event.request);
+      if (response.ok) await cache.put(url.pathname, response.clone());
+      return response;
+    } catch {
+      return (await cache.match(url.pathname)) || Response.error();
+    }
+  })());
 });

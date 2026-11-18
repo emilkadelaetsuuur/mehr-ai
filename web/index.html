@@ -1,20 +1,145 @@
 <!doctype html>
-<html lang="uz">
+<html lang="ru">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<title>Nigoh — ona va bola nazorati</title>
-<meta name="description" content="Nigoh: homilador ayollar va chaqaloqlar uchun xavf zonalari reyestri, faol chaqiruv va AI qo'ng'iroq.">
-<meta name="theme-color" content="#0b3f3c">
-<link rel="manifest" href="/manifest.json">
-<link rel="icon" href="/icon.svg">
-<link rel="stylesheet" href="/styles.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#03045e">
+  <meta name="description" content="Голосовое наблюдение для клиник Узбекистана. Mehr AI звонит пациентам между приёмами, собирает ответы и передаёт врачу просьбы о помощи.">
+  <title>Mehr AI — наблюдение за пациентами между приёмами</title>
+  <link rel="icon" type="image/svg+xml" href="/brand/mehr-wave-blue.svg">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="stylesheet" href="/brand/type.css">
+  <link rel="stylesheet" href="/brand/language.css">
+  <link rel="stylesheet" href="/home.css">
+  <script src="/brand/language.js" defer></script>
+  <script src="/home.js" defer></script>
 </head>
-<body>
-<header class="top" id="top"></header>
-<nav id="nav"></nav>
-<main id="app"><div class="card">Yuklanmoqda…</div></main>
-<script src="/i18n.js"></script>
-<script src="/app.js"></script>
+<body id="start">
+  <a class="skip" href="#main"><span data-uz="Asosiy qismga o‘tish">К содержанию</span></a>
+  <header class="mast frame">
+    <div class="bar">
+      <a class="brand" href="#start" aria-label="Mehr AI"><img src="/brand/mehr-wave-blue.svg" alt="" width="38" height="38"><span>Mehr AI</span></a>
+      <nav class="primary" aria-label="Основное меню">
+        <a href="#programmes"><span data-uz="Dasturlar">Программы</span></a>
+        <a href="#workflow"><span data-uz="Bemor yo‘li">Путь пациента</span></a>
+        <a href="#clinic"><span data-uz="Klinika uchun">Для клиники</span></a>
+      </nav>
+      <div class="tools">
+        <mehr-language value="ru"></mehr-language>
+        <a class="enter" href="/cabinet/#/"><span data-uz="Kirish">Войти</span><span class="arrow" aria-hidden="true">↗</span></a>
+        <button class="menu" type="button" aria-label="Меню" aria-controls="mobile-links" aria-expanded="false"><i></i><i></i></button>
+      </div>
+    </div>
+    <nav id="mobile-links" aria-label="Меню" hidden>
+        <a href="#programmes"><span data-uz="Dasturlar">Программы</span></a>
+        <a href="#workflow"><span data-uz="Bemor yo‘li">Путь пациента</span></a>
+        <a href="#clinic"><span data-uz="Klinika uchun">Для клиники</span></a>
+    </nav>
+  </header>
+  <main id="main" tabindex="-1">
+    <section class="hero frame" aria-labelledby="hero-h">
+      <picture class="hero-scene">
+        <source media="(max-width: 700px)" srcset="/brand/home-visit-mobile.webp" width="800" height="608">
+        <img src="/brand/home-visit.webp" alt="Пожилой мужчина дома отвечает на телефонный звонок" width="1840" height="766" fetchpriority="high">
+      </picture>
+      <div class="hero-copy">
+        <p class="audience"><span data-uz="Poliklinikalar va xususiy klinikalar uchun">Для поликлиник и частных клиник</span></p>
+        <h1 id="hero-h"><span data-uz="Qabullar orasida">Наблюдение</span> <span data-uz="bemor kuzatuvi">между приёмами</span></h1>
+        <p class="lead"><span data-uz="Mehr AI klinika rejasiga ko‘ra bemorlarga qo‘ng‘iroq qiladi. Shifokor javoblarni ko‘rib, bugun kimga qayta qo‘ng‘iroq qilishni belgilaydi.">Mehr AI звонит пациентам по плану клиники. Врач видит ответы и решает, кому перезвонить сегодня.</span></p>
+        <div class="actions">
+          <a class="button hero-cta" href="/cabinet/#/"><span data-uz="Kabinetni ochish">Открыть кабинет</span><span class="arrow" aria-hidden="true">↗</span></a>
+          <a class="hero-link" href="#programmes"><span data-uz="So‘rov namunasi">Пример опроса</span><span class="arrow" aria-hidden="true">↓</span></a>
+        </div>
+      </div>
+      <div class="voice-sample">
+        <button id="sample-toggle" type="button" aria-label="Послушать пример вопроса после выписки" hidden>
+          <span class="play-symbol" aria-hidden="true"></span>
+          <span class="sample-words"><small><span data-uz="Uyga chiqqandan keyingi savol">Вопрос после выписки</span></small><strong id="sample-state">Послушать</strong></span>
+          <span id="sample-wave" aria-hidden="true"></span>
+          <time id="sample-time" aria-hidden="true">0:04</time>
+        </button>
+        <audio id="sample-audio" controls preload="none" src="/brand/followup-ru.mp3" aria-label="Вопрос после выписки"></audio>
+        <p id="sample-error" role="status" hidden><span data-uz="Audio yuklanmadi.">Запись не загрузилась.</span> <a href="#programmes" id="read-sample"><span data-uz="Savolni o‘qish">Прочитать вопрос</span></a></p>
+      </div>
+    </section>
+    <section id="programmes" class="programmes content" aria-labelledby="program-h">
+      <header class="section-intro">
+        <h2 id="program-h"><span data-uz="Bemor qanday savol eshitadi?">Что услышит пациент</span></h2>
+        <p><span data-uz="Suhbat namunasi va shifokor qanday ma’lumot olishini ko‘rish uchun kuzatuv dasturini tanlang.">Выберите программу наблюдения, чтобы увидеть пример разговора и запись для врача.</span></p>
+      </header>
+      <div class="case-controls">
+        <div id="case-tabs" class="case-tabs" role="tablist" aria-label="Программа наблюдения">
+          <button id="tab-0" type="button" role="tab" aria-selected="true" tabindex="0" aria-controls="case-panel" data-choice="0"><span data-uz="Pnevmoniyadan keyin">После пневмонии</span></button>
+          <button id="tab-1" type="button" role="tab" aria-selected="false" tabindex="-1" aria-controls="case-panel" data-choice="1"><span data-uz="Homiladorlik">Беременность</span></button>
+          <button id="tab-2" type="button" role="tab" aria-selected="false" tabindex="-1" aria-controls="case-panel" data-choice="2"><span data-uz="Birinchi tug‘ruq">Первые роды</span></button>
+          <button id="tab-3" type="button" role="tab" aria-selected="false" tabindex="-1" aria-controls="case-panel" data-choice="3"><span data-uz="Bolani emlash">Прививки детям</span></button>
+          <button id="tab-4" type="button" role="tab" aria-selected="false" tabindex="-1" aria-controls="case-panel" data-choice="4"><span data-uz="Kattalarni emlash">Прививки взрослым</span></button>
+          <button id="tab-5" type="button" role="tab" aria-selected="false" tabindex="-1" aria-controls="case-panel" data-choice="5"><span data-uz="OIV bo‘yicha kuzatuv">Наблюдение при ВИЧ</span></button>
+          <button id="tab-6" type="button" role="tab" aria-selected="false" tabindex="-1" aria-controls="case-panel" data-choice="6"><span data-uz="JYBI bo‘yicha kuzatuv">Наблюдение при ИППП</span></button>
+        </div>
+        <label class="case-select" for="case-select"><span><span data-uz="Kuzatuv dasturi">Программа наблюдения</span></span>
+          <select id="case-select">
+            <option value="0" data-uz="Pnevmoniyadan keyin">После пневмонии</option>
+            <option value="1" data-uz="Homiladorlik">Беременность</option>
+            <option value="2" data-uz="Birinchi tug‘ruq">Первые роды</option>
+            <option value="3" data-uz="Bolani emlash">Прививки детям</option>
+            <option value="4" data-uz="Kattalarni emlash">Прививки взрослым</option>
+            <option value="5" data-uz="OIV bo‘yicha kuzatuv">Наблюдение при ВИЧ</option>
+            <option value="6" data-uz="JYBI bo‘yicha kuzatuv">Наблюдение при ИППП</option>
+          </select>
+        </label>
+      </div>
+      <article id="case-panel" class="case-panel" role="tabpanel" tabindex="0" aria-labelledby="tab-0">
+        <div class="conversation">
+          <div class="speech">
+            <div class="speaker"><img src="/brand/mehr-wave-blue.svg" alt="" width="24" height="24"><span>Mehr AI</span></div>
+            <p class="question" data-field="question">Стало ли вам труднее дышать по сравнению со вчерашним днём?</p>
+          </div>
+          <div class="reply">
+            <div class="speaker"><span class="person-icon" aria-hidden="true"></span><span data-field="recipient">Пациент после выписки</span></div>
+            <p data-field="answer">Да, сегодня дышать труднее.</p>
+          </div>
+        </div>
+        <div class="case-result">
+          <div class="result-label"><svg class="icon" aria-hidden="true" focusable="false"><use href="/brand/navigation.svg#note"></use></svg><h3><span data-uz="Shifokor nimani ko‘radi">Что увидит врач</span></h3></div>
+          <p data-field="action">Отметку об ухудшении дыхания и задачу связаться с пациентом.</p>
+        </div>
+      </article>
+    </section>
+    <section id="workflow" class="workflow frame" aria-labelledby="route-h">
+      <div class="workflow-inner">
+        <figure class="doctor-photo">
+          <img src="/brand/physician.webp" alt="Семейный врач в поликлинике разговаривает по телефону" width="1536" height="1024" loading="lazy" decoding="async">
+        </figure>
+        <div class="route-copy">
+          <h2 id="route-h"><span data-uz="Uyga chiqarilgandan so‘ng">После выписки</span></h2>
+          <ol class="timeline">
+            <li><h3><span data-uz="Uyga chiqarilgan kuni">В день выписки</span></h3><p><span data-uz="Kartaga shifoxona, javob berilgan sana va tashxis kiritiladi. Oila shifokori bemor uyiga qaytganini ko‘radi.">В карте фиксируют больницу, дату выписки и диагноз. Так семейный врач узнаёт, что пациент вернулся домой.</span></p></li>
+            <li><h3><span data-uz="Ertasi kuni">На следующий день</span></h3><p><span data-uz="Bemor rozilik bergan bo‘lsa, Mehr AI uning holatiga mos dastur bo‘yicha qo‘ng‘iroq qiladi.">Если пациент дал согласие, Mehr AI звонит по программе, выбранной для его состояния.</span></p></li>
+            <li><h3><span data-uz="Suhbat paytida">Во время разговора</span></h3><p><span data-uz="Bemor rus yoki o‘zbek tilida javob beradi. U shifokor qayta qo‘ng‘iroq qilishini so‘rashi mumkin.">Пациент отвечает по-русски или по-узбекски. Он может попросить, чтобы ему перезвонил врач.</span></p></li>
+            <li><h3><span data-uz="Qo‘ng‘iroqdan so‘ng">После звонка</span></h3><p><span data-uz="Shifokor shikoyatlar va ahvoldagi o‘zgarishlarni ko‘rib, qayta ko‘rik kerakligini belgilaydi.">Врач видит жалобы и изменения в самочувствии, затем решает, нужен ли повторный осмотр.</span></p></li>
+          </ol>
+          <a class="text-link" href="/cabinet/#/care"><span data-uz="Bemor yo‘lini ochish">Открыть маршрут пациента</span><span class="arrow" aria-hidden="true">↗</span></a>
+        </div>
+      </div>
+    </section>
+    <section id="clinic" class="clinic content" aria-labelledby="clinic-h">
+      <div class="clinic-copy">
+        <h2 id="clinic-h"><span data-uz="Klinika kabineti">Кабинет клиники</span></h2>
+        <p><span data-uz="Shifokor bemor kartasini ochadi, ko‘rikni savollar yordamida qayd etadi va keyingi muloqotni rejalashtiradi.">Врач открывает карту пациента, записывает осмотр по вопросам и планирует следующий контакт.</span></p>
+        <a class="text-link" href="/cabinet/#/dmed"><span data-uz="DMED bilan almashinuvni ko‘rish">Посмотреть обмен с DMED</span><span class="arrow" aria-hidden="true">↗</span></a>
+        <small><span data-uz="Bu yerda DMED almashinuvi sinov ma’lumotlari bilan ko‘rsatilgan.">На стенде используются тестовые данные DMED.</span></small>
+      </div>
+      <div class="work-links">
+          <a href="/cabinet/#/"><span class="work-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="/brand/navigation.svg#registry"></use></svg></span><span data-uz="Bemorlar reyestri">Реестр пациентов</span><span class="arrow" aria-hidden="true">↗</span></a>
+          <a href="/cabinet/#/ovoz"><span class="work-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="/brand/navigation.svg#mic"></use></svg></span><span data-uz="Ovozli kiritish">Голосовой ввод</span><span class="arrow" aria-hidden="true">↗</span></a>
+          <a href="/cabinet/#/vazifalar"><span class="work-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="/brand/navigation.svg#tasks"></use></svg></span><span data-uz="Shifokor vazifalari">Задачи врача</span><span class="arrow" aria-hidden="true">↗</span></a>
+          <a href="/cabinet/#/qongiroqlar"><span class="work-icon"><svg class="icon" aria-hidden="true" focusable="false"><use href="/brand/navigation.svg#phone"></use></svg></span><span data-uz="Qo‘ng‘iroqlar rejasi">План обзвона</span><span class="arrow" aria-hidden="true">↗</span></a>
+      </div>
+    </section>
+  </main>
+  <footer class="footer frame"><div><a class="brand" href="#start" aria-label="Mehr AI"><img src="/brand/mehr-wave-blue.svg" alt="" width="38" height="38"><span>Mehr AI</span></a><span class="place"><span data-uz="Toshkent, O‘zbekiston">Ташкент, Узбекистан</span></span></div>
+    <a href="#start"><span data-uz="Yuqoriga">Наверх</span><span class="arrow" aria-hidden="true">↑</span></a>
+  </footer>
 </body>
 </html>
