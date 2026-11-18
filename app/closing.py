@@ -18,7 +18,7 @@ import re
 from . import config, core, rules
 
 log = logging.getLogger("nigoh.closing")
-_state = {"client": None}
+_state = {"client": None, "plain": False}
 
 EMERGENCY = {"uz": "bir yuz uch", "ru": "сто три"}  # 103 in words: the speech engine reads words, not digits
 LANGUAGE = {"uz": "Uzbek, Latin script", "ru": "Russian"}
@@ -99,22 +99,44 @@ def brief(call, res):
     return "\n".join(lines)
 
 
+def direct():
+    """True when requests go straight to Anthropic, False behind another company's gateway (ANTHROPIC_BASE_URL)."""
+    base = os.getenv("ANTHROPIC_BASE_URL", "").strip()
+    return not base or "api.anthropic.com" in base
+
+
+def _send(client, text):
+    import anthropic
+
+    common = {
+        "model": config.CLAUDE_MODEL,
+        "max_tokens": 2000,  # the answer is three sentences; the room is for the model's own thinking
+        "system": SYSTEM,
+        "messages": [{"role": "user", "content": text}],
+    }
+    effort = {"output_config": {"effort": "low"}}
+    if direct():
+        # if a safety classifier declines, the API itself retries the request on its fallback model
+        return client.beta.messages.create(**common, **effort, betas=["server-side-fallback-2026-07-01"], fallbacks="default")
+    # A gateway in front of the API gets the plain Messages request. Gateways often lag behind the API, so a
+    # refused `output_config` is dropped and not sent again.
+    if not _state["plain"]:
+        try:
+            return client.messages.create(**common, **effort)
+        except anthropic.BadRequestError as e:
+            log.warning("claude: the gateway refused output_config (%s); sending the plain request from now on", str(e.message)[:160])
+            _state["plain"] = True
+    return client.messages.create(**common)
+
+
 def ask(text):
     """One request to Claude. Returns its words, or None if it declined, ran out of room or the call failed."""
     import anthropic  # imported here so the application starts and works without the package
 
-    if _state["client"] is None:  # credentials come from the environment (ANTHROPIC_API_KEY)
+    if _state["client"] is None:  # the key and, behind a gateway, its address come from the environment
         _state["client"] = anthropic.Anthropic(timeout=config.CLAUDE_TIMEOUT, max_retries=0)  # a caller is waiting: no retries
     try:
-        r = _state["client"].beta.messages.create(
-            model=config.CLAUDE_MODEL,
-            max_tokens=2000,  # the answer is three sentences; the room is for the model's own thinking
-            output_config={"effort": "low"},
-            betas=["server-side-fallback-2026-07-01"],
-            fallbacks="default",  # if a safety classifier declines, the API retries on its fallback model
-            system=SYSTEM,
-            messages=[{"role": "user", "content": text}],
-        )
+        r = _send(_state["client"], text)
     except anthropic.RateLimitError:
         log.warning("claude: rate limited")
         return None
@@ -124,7 +146,7 @@ def ask(text):
     except anthropic.APIConnectionError as e:  # includes a timeout
         log.warning("claude: no answer in time (%s)", type(e).__name__)
         return None
-    if r.stop_reason != "end_turn":  # refusal, or cut off at max_tokens
+    if r.stop_reason in ("refusal", "max_tokens"):  # declined, or cut off before the answer was complete
         log.warning("claude: stopped with %s", r.stop_reason)
         return None
     return " ".join(b.text.strip() for b in r.content if b.type == "text").strip()

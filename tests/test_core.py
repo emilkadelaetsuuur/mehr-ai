@@ -241,6 +241,44 @@ def test_closing_words_come_from_claude_only_when_they_pass_the_checks(monkeypat
         assert any(t["type"] == "mutaxassis" and t["status"] == "ochiq" for t in c.get(f"/api/patients/{p['id']}").json()["tasks"])
 
 
+def test_claude_request_fits_a_gateway(monkeypatch):
+    """Straight to Anthropic the request uses the API's own fallback; behind a gateway it is the plain Messages
+    request, and a field the gateway refuses is dropped and not sent again."""
+    import pytest
+
+    anthropic = pytest.importorskip("anthropic")
+    import httpx2
+
+    from app import closing
+
+    class Recorder:
+        def __init__(self, refuse=()):
+            self.calls, self.refuse = [], refuse
+            self.messages = self.beta = self
+            self.beta.messages = self
+
+        def create(self, **kw):
+            self.calls.append(sorted(kw))
+            if any(k in kw for k in self.refuse):
+                bad = httpx2.Response(400, request=httpx2.Request("POST", "https://gateway.example/v1/messages"))
+                raise anthropic.BadRequestError("unknown field", response=bad, body=None)
+            return "ok"
+
+    monkeypatch.setitem(closing._state, "plain", False)
+    monkeypatch.delenv("ANTHROPIC_BASE_URL", raising=False)
+    c = Recorder()
+    assert closing.direct() and closing._send(c, "x") == "ok" and "fallbacks" in c.calls[0] and "betas" in c.calls[0]
+
+    monkeypatch.setenv("ANTHROPIC_BASE_URL", "https://gateway.example")
+    c = Recorder()
+    assert not closing.direct() and closing._send(c, "x") == "ok"
+    assert "fallbacks" not in c.calls[0] and "betas" not in c.calls[0] and "output_config" in c.calls[0]
+
+    c = Recorder(refuse=("output_config",))
+    assert closing._send(c, "x") == "ok" and len(c.calls) == 2 and "output_config" not in c.calls[1]
+    assert closing._send(c, "x") == "ok" and len(c.calls) == 3 and "output_config" not in c.calls[2]  # remembered
+
+
 def test_sign_in_forgives_paste_noise_but_not_a_wrong_password(monkeypatch):
     from app import auth, config
 
