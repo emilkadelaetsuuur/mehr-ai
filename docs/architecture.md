@@ -4,12 +4,12 @@ Nigoh — одно приложение FastAPI с базой PostgreSQL и ин
 
 ```mermaid
 flowchart TB
-  subgraph Клиенты
+  subgraph CL0["Клиенты"]
     W["Интерфейс сотрудников<br/>web/app.js — PWA"]
     P["Страница звонка пациента<br/>web/call.js — по ссылке или QR"]
     G["Стенд с SIM-картой<br/>gateway/gateway.py"]
   end
-  subgraph Приложение["Приложение (FastAPI)"]
+  subgraph APP["Приложение (FastAPI)"]
     A["app/api/* — маршруты и проверка входных данных"]
     C["app/core.py — предметная логика"]
     R["app/rules.py — зоны"]
