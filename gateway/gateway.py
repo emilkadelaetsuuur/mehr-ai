@@ -17,6 +17,7 @@ Needs only Python 3 and adb (Android platform-tools). Usage:
 """
 
 import argparse
+import http.client
 import json
 import os
 import re
@@ -24,7 +25,7 @@ import subprocess
 import sys
 import time
 import urllib.error
-import urllib.request
+import urllib.parse
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 BROWSERS = [
@@ -44,7 +45,7 @@ def say(*words):
 
 class Rig:
     def __init__(self, a):
-        self.a, self.key = a, ""
+        self.a, self.key, self.conn = a, "", None
         if os.path.exists(a.key):
             with open(a.key, encoding="utf-8") as f:
                 self.key = f.read().strip()
@@ -52,14 +53,27 @@ class Rig:
     # ---------- the server
 
     def http(self, method, path, body=None):
-        req = urllib.request.Request(
-            self.a.server.rstrip("/") + path,
-            method=method,
-            data=json.dumps(body).encode() if body is not None else None,
-            headers={"X-Gateway-Key": self.key, "Content-Type": "application/json", "User-Agent": "nigoh-gateway"},
-        )
-        with urllib.request.urlopen(req, timeout=15) as r:
-            return json.loads(r.read().decode() or "{}")
+        """One request to the server over a connection that is kept open between requests."""
+        url = urllib.parse.urlsplit(self.a.server)
+        headers = {"X-Gateway-Key": self.key, "Content-Type": "application/json", "User-Agent": "nigoh-gateway"}
+        data = json.dumps(body).encode() if body is not None else None
+        for attempt in (1, 2):
+            try:
+                if self.conn is None:
+                    make = http.client.HTTPSConnection if url.scheme == "https" else http.client.HTTPConnection
+                    self.conn = make(url.netloc, timeout=15)
+                self.conn.request(method, path, body=data, headers=headers)
+                r = self.conn.getresponse()
+                text = r.read().decode()
+                if r.status >= 400:
+                    raise urllib.error.HTTPError(self.a.server + path, r.status, text[:200], r.headers, None)
+                return json.loads(text or "{}")
+            except urllib.error.HTTPError:
+                raise
+            except Exception:  # the kept connection went stale: open a new one, once
+                self.conn = None
+                if attempt == 2:
+                    raise
 
     def report(self, token, state):
         try:
@@ -167,7 +181,7 @@ class Rig:
         try:
             started, seen_out, ready = time.time(), False, False
             while True:  # wait for the person to pick up
-                time.sleep(1)
+                time.sleep(0.4)
                 state = "talking" if self.a.dry_run and time.time() - started > 2 else self.line_state()
                 if not ready and not self.a.dry_run and self.page_state(token) == "ready":
                     ready = True
@@ -180,10 +194,10 @@ class Rig:
                     say("   nobody picked up")
                     self.hang_up()
                     return self.report(token, "noanswer")
+            self.report(token, "go")  # the call window starts speaking at once; the greeting needs no reply
             say("   picked up")
             if self.a.speaker and not self.a.dry_run:
                 say("   loudspeaker:", "on" if self.loudspeaker() else "button not found - tap it on the phone")
-            self.report(token, "go")  # the call window starts speaking
             started, last = time.time(), "ready" if ready else None
             while time.time() - started < self.a.talk_seconds:
                 time.sleep(1)
