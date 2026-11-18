@@ -99,8 +99,10 @@ def flush(db, limit=50):
     rows = db.query(DmedMessage).filter(DmedMessage.direction == "out", DmedMessage.status == "navbatda").order_by(DmedMessage.id).limit(limit).all()
     if not rows:
         return 0
+    from .carepath import DemoCase
+
     for m in rows:
-        if mode() == "sinov":
+        if mode() == "sinov" or (m.patient_id and db.query(DemoCase).filter_by(patient_id=m.patient_id).first()):
             m.status, m.sent_at = "yuborildi", now()
             continue
         kind = (m.payload or {}).get("resourceType", "")
@@ -162,7 +164,7 @@ def answers(call, scenario):
         "questionnaire": f"urn:nigoh:ssenariy:{call.scenario}",
         "subject": subject(call.patient),
         "authored": iso(call.finished_at or now()),
-        "author": {"display": "Nigoh AI qo'ng'iroq"},
+        "author": {"display": "Mehr AI qo'ng'iroq"},
         "item": items,
     }
 

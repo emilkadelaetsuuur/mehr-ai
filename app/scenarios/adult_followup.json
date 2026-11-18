@@ -1,0 +1,52 @@
+{
+  "id": "adult_followup",
+  "title": {
+    "uz": "Shifoxonadan keyingi kuzatuv",
+    "ru": "Общее наблюдение после выписки"
+  },
+  "who": "adult_followup",
+  "basis": "Индивидуальный план клиники / Klinikaning shaxsiy kuzatuv rejasi",
+  "greeting": {
+    "ru": "Здравствуйте. Вам звонит помощник поликлиники Mehr AI.",
+    "uz": "Assalomu alaykum. Sizga poliklinika yordamchisi Mehr AI qo‘ng‘iroq qilmoqda."
+  },
+  "intro": {
+    "ru": "Обсудим ваше самочувствие после выписки.",
+    "uz": "Shifoxonadan chiqqandan keyingi ahvolingiz haqida so‘raymiz."
+  },
+  "questions": [
+    {
+      "id": "well",
+      "ru": "Стало ли вам хуже со вчерашнего дня?",
+      "uz": "Kechagiga qaraganda ahvolingiz yomonlashdimi?",
+      "type": "yesno",
+      "flag_if": "yes",
+      "extra": "ahvol"
+    },
+    {
+      "id": "plan",
+      "ru": "Понятно ли, когда следующий приём?",
+      "uz": "Keyingi qabul qachonligi tushunarlimi?",
+      "type": "yesno",
+      "flag_if": "no",
+      "extra": "callback"
+    },
+    {
+      "id": "return",
+      "ru": "Попросить вашего врача перезвонить?",
+      "uz": "Shifokoringiz qayta qo‘ng‘iroq qilishini xohlaysizmi?",
+      "type": "yesno",
+      "flag_if": "yes",
+      "extra": "callback"
+    }
+  ],
+  "closing_ok": {
+    "ru": "Спасибо. Ответы сохранены для вашего врача.",
+    "uz": "Rahmat. Javoblaringiz shifokoringiz uchun saqlandi."
+  },
+  "closing_alert": {
+    "ru": "Клиника получила ответы. Если нужна неотложная помощь, звоните 103.",
+    "uz": "Klinika javoblaringizni oldi. Shoshilinch yordam kerak bo‘lsa, 103 ga qo‘ng‘iroq qiling."
+  }
+}
+

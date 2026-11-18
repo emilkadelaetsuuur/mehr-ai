@@ -31,7 +31,7 @@ def bundle(p):
             "resourceType": "Patient",
             "id": str(p.id),
             "name": [{"family": family, "given": [given] if given else []}],
-            "gender": "male" if p.kind == "chaqaloq" and not family.endswith("a") else "female",
+            "gender": "unknown",
             "birthDate": p.born_at.date().isoformat() if p.born_at else (str(p.birth_year) if p.birth_year else None),
             "telecom": [{"system": "phone", "value": p.phone}] if p.phone else [],
             "address": [{"district": p.mahalla, "country": "UZ"}] if p.mahalla else [],
@@ -58,7 +58,7 @@ def bundle(p):
             "id": f"risk-{p.id}",
             "status": "final",
             "subject": {"reference": ref},
-            "method": {"text": "Nigoh rule engine (rules.json); decision stays with the clinician"},
+            "method": {"text": "Mehr AI rule engine (rules.json); decision stays with the clinician"},
             "prediction": [
                 {
                     "qualitativeRisk": {

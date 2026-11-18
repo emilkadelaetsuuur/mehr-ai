@@ -6,8 +6,8 @@
  "who": "homilador",
  "basis": "Homiladorlik davridagi kuzatuv (JSST antenatal parvarish tavsiyalari): umumiy ahvol, uyqu, kayfiyat, davolanishga rioya; savollarni shifokor tasdiqlaydi",
  "greeting": {
-  "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. O'zingizni qanday his qilayotganingiz haqida beshta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
-  "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам пять коротких вопросов о том, как вы себя чувствуете. Отвечайте «да» или «нет»."
+  "uz": "Assalomu alaykum! Men Mehr AI — poliklinikaning sun'iy intellekt yordamchisiman. O'zingizni qanday his qilayotganingiz haqida beshta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Здравствуйте! Я Mehr AI — помощник поликлиники на основе искусственного интеллекта. Задам пять коротких вопросов о том, как вы себя чувствуете. Отвечайте «да» или «нет»."
  },
  "intro": {
   "uz": "O'zingizni qanday his qilayotganingiz haqida beshta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",

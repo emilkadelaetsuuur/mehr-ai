@@ -1,0 +1,44 @@
+{
+  "id": "vaccine_child",
+  "title": {
+    "uz": "Bolaning reja asosidagi emlashi",
+    "ru": "Прививка ребёнка по плану"
+  },
+  "who": "vaccine_child",
+  "basis": "Индивидуальный план клиники / Klinikaning shaxsiy kuzatuv rejasi",
+  "greeting": {
+    "ru": "Здравствуйте. Вам звонит помощник поликлиники Mehr AI.",
+    "uz": "Assalomu alaykum. Sizga poliklinika yordamchisi Mehr AI qo‘ng‘iroq qilmoqda."
+  },
+  "intro": {
+    "ru": "У ребёнка в карте есть плановая вакцинация.",
+    "uz": "Bolaning kartasida rejali emlash bor."
+  },
+  "questions": [
+    {
+      "id": "given",
+      "ru": "Получил ли ребёнок прививку, о которой мы напомнили?",
+      "uz": "Bola eslatilgan emlashni oldimi?",
+      "type": "yesno",
+      "flag_if": "no",
+      "extra": "callback"
+    },
+    {
+      "id": "appointment",
+      "ru": "Нужна ли помощь педиатра с записью или уточнением даты?",
+      "uz": "Navbatga yozilish yoki sanani aniqlashda pediatr yordami kerakmi?",
+      "type": "yesno",
+      "flag_if": "yes",
+      "extra": "callback"
+    }
+  ],
+  "closing_ok": {
+    "ru": "Спасибо. Ответы сохранены для вашего врача.",
+    "uz": "Rahmat. Javoblaringiz shifokoringiz uchun saqlandi."
+  },
+  "closing_alert": {
+    "ru": "Клиника получила ответы. Если нужна неотложная помощь, звоните 103.",
+    "uz": "Klinika javoblaringizni oldi. Shoshilinch yordam kerak bo‘lsa, 103 ga qo‘ng‘iroq qiling."
+  }
+}
+

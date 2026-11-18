@@ -6,8 +6,8 @@
  "who": "emlash",
  "basis": "Profilaktik emlashlar milliy taqvimi (app/vaccines.json); taqvimni SSV buyrug'i bo'yicha shifokor tasdiqlaydi",
  "greeting": {
-  "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. Shu emlashlar haqida bir nechta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
-  "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам несколько коротких вопросов об этих прививках. Отвечайте «да» или «нет»."
+  "uz": "Assalomu alaykum! Men Mehr AI — poliklinikaning sun'iy intellekt yordamchisiman. Shu emlashlar haqida bir nechta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Здравствуйте! Я Mehr AI — помощник поликлиники на основе искусственного интеллекта. Задам несколько коротких вопросов об этих прививках. Отвечайте «да» или «нет»."
  },
  "intro": {
   "uz": "Shu emlashlar haqida bir nechta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",

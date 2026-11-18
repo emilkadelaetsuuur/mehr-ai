@@ -247,10 +247,32 @@ HUMAN = [
 ]
 
 
+# Stop words: the caller asks for a doctor. Any of these words together with a word of asking ("нужен врач",
+# "shifokor kerak", "позовите доктора"), or the doctor's name alone ("Доктор!", "Врача!"), ends the questions
+# at once: the doctor gets an urgent task to ring back. A doctor merely mentioned in an answer
+# ("нет, врач отменил таблетки") is not a request.
+DOCTOR = ["доктор", "доктора", "доктору", "доктором", "врач", "врача", "врачу", "врачом", "врачей",
+          "shifokor", "shifokorni", "shifokorga", "shifokorim", "shifokorimni", "doktor", "doktorni", "doktorga", "vrach", "vrachni", "vrachga",
+          "шифокор", "шифокорни", "шифокорга", "докторни", "докторга", "врачни"]
+ASKING = ["нужен", "нужна", "нужно", "надо", "позовите", "позови", "позвать", "вызовите", "вызови", "вызвать", "соедините", "соедини",
+          "свяжите", "дайте", "хочу", "срочно", "помогите", "kerak", "chaqir", "chaqiring", "chaqirib", "ulang", "ulab", "ulanmoqchiman",
+          "bering", "zudlik", "tez", "yordam", "керак", "чакир", "чакиринг", "уланг", "беринг", "ёрдам"]
+FILLER = ["мне", "пожалуйста", "ну", "эй", "алло", "iltimos", "menga", "allo", "ey"]
+
+
+def wants_doctor(text):
+    """True when the caller asks for a doctor (see DOCTOR above). "Врач приходил" answers a question;
+    "Доктор!" or "Врача, пожалуйста" asks for one."""
+    words = _norm(text).split()
+    if not any(w in DOCTOR for w in words):
+        return False
+    return all(w in DOCTOR or w in FILLER for w in words) or any(w in ASKING for w in words)
+
+
 def wants_human(text):
-    """True when the caller asks for a person instead of answering the question."""
+    """True when the caller asks for a person, a doctor among them, instead of answering the question."""
     low = " " + _norm(text) + " "
-    return any(_norm(w) in low for w in HUMAN)
+    return any(_norm(w) in low for w in HUMAN) or wants_doctor(text)
 
 
 def signs(text, quick=False):

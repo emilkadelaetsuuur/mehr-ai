@@ -6,8 +6,8 @@
  "who": "shifoxona",
  "basis": "DMED yuborgan chiqarish ma'lumoti bo'yicha faol kuzatish; savollarni shifokor tasdiqlaydi",
  "greeting": {
-  "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. Shifoxonadan keyingi ahvolingiz haqida to'rtta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
-  "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам четыре коротких вопроса о самочувствии после больницы. Отвечайте «да» или «нет»."
+  "uz": "Assalomu alaykum! Men Mehr AI — poliklinikaning sun'iy intellekt yordamchisiman. Shifoxonadan keyingi ahvolingiz haqida to'rtta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Здравствуйте! Я Mehr AI — помощник поликлиники на основе искусственного интеллекта. Задам четыре коротких вопроса о самочувствии после больницы. Отвечайте «да» или «нет»."
  },
  "intro": {
   "uz": "Shifoxonadan keyingi ahvolingiz haqida to'rtta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",

@@ -226,6 +226,7 @@ def hand_over(db, call, said=""):
     """The caller asked for a person. Staff get a task to ring back. With the polyclinic's number set the
     call is put through at once, and the task stays in case nobody picks up."""
     core.callback(db, call, said)
+    ok = "say_doctor_ok" if extract.wants_doctor(said) else "say_operator_ok"
     if call.status != "tugadi":
         res = core.finish_call(db, call)  # the answers given so far are kept
         call.closing, call.closing_by = closing.fixed(call, res), "shablon"
@@ -235,10 +236,10 @@ def hand_over(db, call, said=""):
         return _reply(
             _play(call.token, "say_operator_dial"),
             f'<Dial timeout="25" callerId="{escape(config.TWILIO_FROM)}">{clinic}</Dial>',
-            _play(call.token, "say_operator_ok"),
+            _play(call.token, ok),
             HANGUP,
         )
-    return _reply(_play(call.token, "say_operator_ok"), HANGUP)
+    return _reply(_play(call.token, ok), HANGUP)
 
 
 def hung_up(db, call):

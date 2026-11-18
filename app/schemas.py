@@ -22,6 +22,12 @@ class ExtractIn(BaseModel):
     lang: str = "uz"
 
 
+class VoiceDraftIn(BaseModel):
+    answers: dict[str, str] = Field(max_length=10)
+    kind: Kind | None = None
+    lang: Literal["ru", "uz"] = "ru"
+
+
 class Vitals(BaseModel):
     bp_sys: float | None = Field(None, ge=40, le=300)
     bp_dia: float | None = Field(None, ge=20, le=200)

@@ -6,9 +6,9 @@ import secrets
 from datetime import datetime, timedelta
 
 from sqlalchemy import func
-from sqlalchemy.orm import joinedload, selectinload
+from sqlalchemy.orm import joinedload, object_session, selectinload
 
-from . import config, dialogue, dmed, extract, rules, telegram, vaccines
+from . import carepath, config, dialogue, dmed, extract, rules, telegram, vaccines
 from .db import AuditLog, Call, Hospitalization, Notice, Observation, Patient, RiskEvent, SessionLocal, Task
 from .schemas import Vitals
 
@@ -74,7 +74,7 @@ def merged(patient):
 def notify(db, patient, role, level, uz, ru):
     """In-app notice for a role; urgent ones are also pushed to the bound Telegram chats."""
     db.add(Notice(patient_id=patient.id if patient else None, role=role, level=level, text_uz=uz[:400], text_ru=ru[:400]))
-    if level in ("red", "yellow") and telegram.enabled():
+    if level in ("red", "yellow") and telegram.enabled() and not (patient and db.query(carepath.DemoCase).filter_by(patient_id=patient.id).first()):
         chats = set(telegram.recipients(db, role, level)) | ({config.TELEGRAM_CHAT_ID} if config.TELEGRAM_CHAT_ID else set())
         for chat in chats:
             telegram.send(chat, ("🔴 " if level == "red" else "🟡 ") + uz)
@@ -137,6 +137,10 @@ def audit(db, who, action, patient=None, detail=""):
     db.add(AuditLog(role=role[:20], actor=actor, action=action, patient_id=patient.id if patient else None, detail=str(detail)[:400], at=now()))
 
 
+class IneligibleScenario(ValueError):
+    pass
+
+
 class ConsentRequired(Exception):
     """AI calls are allowed only for patients who gave consent."""
 
@@ -159,9 +163,27 @@ def allowed(patient, scenario):
     return bool(patient.consent_at) and (not SCENARIOS[scenario].get("private") or bool(patient.private_consent_at))
 
 
-def create_call(db, patient, scenario, task_id=None, planned_at=None, context=None):
+def create_call(db, patient, scenario, task_id=None, planned_at=None, context=None, vaccine_plan=None):
     if not allowed(patient, scenario):
         raise ConsentRequired(patient.full_name)
+    if scenario in carepath.IMMUNIZATION:
+        plan = vaccine_plan or carepath.pending_plan(db, patient, scenario)
+        recipient = carepath.vaccine_recipient(db, patient, db.get(carepath.Profile, patient.id), plan.due) if plan else None
+        if (
+            not plan
+            or plan.status != "scheduled"
+            or not recipient
+            or plan.recipient_id != recipient.id
+            or (scenario == "vaccine_child") != (recipient.id != patient.id)
+        ):
+            raise IneligibleScenario(scenario)
+        if plan.call_id:
+            existing = db.get(Call, plan.call_id)
+            if existing and existing.status in UNFINISHED:
+                return existing
+            raise IneligibleScenario(scenario)
+    elif not fits(patient, scenario):
+        raise IneligibleScenario(scenario)
     if context is None:
         context = call_context(patient, scenario)
     c = Call(
@@ -178,6 +200,9 @@ def create_call(db, patient, scenario, task_id=None, planned_at=None, context=No
     )
     db.add(c)
     patient.calls.append(c)
+    if scenario in carepath.IMMUNIZATION:
+        db.flush()
+        plan.call_id = c.id
     return c
 
 
@@ -199,6 +224,8 @@ def fits(patient, scenario):
     """True when a scenario is written for this patient. A call about a baby is never made to a patient
     under dispensary follow-up, nor a call about treatment to the mother of a healthy child: each scenario
     reaches only the people it was written for."""
+    if scenario in carepath.TARGETED:
+        return carepath.fits(object_session(patient), patient, scenario)
     who = SCENARIOS[scenario].get("who", "any")
     if who in KINDS:
         return patient.kind == who
@@ -244,11 +271,39 @@ def call_context(patient, scenario):
     return {"hospital": stay.hospital, "icd10": stay.icd10, "diagnosis": stay.diagnosis} if stay and stay.discharged_at else {}
 
 
-def audience(db, scenario, zone=""):
+def audience(db, scenario, zone="", doctor=None):
     """Who a calling round with this scenario can reach. AI calls need consent, and a patient who already
     has an unfinished call of this scenario is not rung twice. The most worrying zone and the longest
     silence come first."""
-    rows = reachable(db, scenario, zone)
+    if scenario in carepath.TARGETED:
+        who = SCENARIOS[scenario].get("who", "any")
+        q = db.query(Patient)
+        if scenario in carepath.PRIVATE:
+            q = q.join(carepath.Profile, carepath.Profile.patient_id == Patient.id).filter(carepath.Profile.private_consent.is_(True))
+        elif scenario in carepath.IMMUNIZATION:
+            q = (
+                q.join(carepath.VaccinePlan, carepath.VaccinePlan.patient_id == Patient.id)
+                .filter(
+                    carepath.VaccinePlan.status == "scheduled",
+                    carepath.VaccinePlan.due <= datetime.now(carepath.LOCAL).date() + timedelta(days=7),
+                    carepath.VaccinePlan.call_id.is_(None),
+                )
+                .distinct()
+            )
+        elif scenario == "first_birth_care":
+            q = q.join(carepath.Profile, carepath.Profile.patient_id == Patient.id).filter(Patient.kind == "tuqqan", carepath.Profile.first_birth.is_(True))
+        elif scenario in {"adult_followup", "respiratory_followup"}:
+            q = q.filter(Patient.discharged_at.isnot(None), Patient.kind.notin_(("chaqaloq", "child")))
+        elif who != "any":
+            q = q.filter(Patient.kind == who)
+        if doctor is not None:
+            q = q.filter(Patient.doctor == doctor)
+        if zone:
+            q = q.filter(Patient.zone == zone)
+        rows = [p for p in q.all() if carepath.fits(db, p, scenario)]
+    else:
+        rows = [p for p in reachable(db, scenario, zone) if (doctor is None or p.doctor == doctor) and fits(p, scenario)]
+
     busy = {pid for (pid,) in db.query(Call.patient_id).filter(Call.scenario == scenario, Call.status.in_(UNFINISHED))}
     fit = [p for p in rows if allowed(p, scenario) and p.id not in busy]
     fit.sort(key=lambda p: (-rules.ORDER.get(p.zone or "green", 0), p.last_contact_at or now()))
@@ -259,10 +314,10 @@ def audience(db, scenario, zone=""):
     }
 
 
-def start_round(db, scenario, lang=None, zone="", limit=10):
+def start_round(db, scenario, lang=None, zone="", limit=10, doctor=None):
     """A calling round: one call for each of the first `limit` patients the scenario can reach."""
     made = []
-    for p in audience(db, scenario, zone)["fit"][:limit]:
+    for p in audience(db, scenario, zone, doctor)["fit"][:limit]:
         if lang:
             p.lang = lang
         made.append(create_call(db, p, scenario, context=call_context(p, scenario)))
@@ -276,7 +331,7 @@ def trial_call(db, scenario, lang=None):
     fit = audience(db, scenario)["fit"]
     p = db.query(Patient).filter(Patient.full_name == TRIAL.get(who, TRIAL["any"]), Patient.consent_at.isnot(None)).first()
     c = next((c for c in sorted(p.calls, key=lambda c: c.id, reverse=True) if c.scenario == scenario and c.status in UNFINISHED), None) if p else None
-    if c:
+    if c and fits(p, scenario):
         c.lang = lang or p.lang or "uz"
         return c
     if p and not (fits(p, scenario) and allowed(p, scenario)):
@@ -292,12 +347,18 @@ def trial_call(db, scenario, lang=None):
 def after_hospital(patient, icd10=""):
     """Which questions the call after a discharge asks: the scenario written for the diagnosis DMED sent,
     else the one for a woman after childbirth or pregnancy, else the general one."""
+    db = object_session(patient)
+    profile = db.get(carepath.Profile, patient.id) if db else None
+    if profile:
+        targeted = carepath.recommended(db, patient)
+        if targeted and targeted in carepath.TARGETED and carepath.fits(db, patient, targeted):
+            return targeted
     if patient.kind == "chaqaloq":
         return "chaqaloq_30kun"
     for sc in SCENARIOS.values():
         if sc.get("icd") and dmed.in_icd(icd10, sc["icd"]):
             return sc["id"]
-    return "chiqarishdan_keyin" if patient.kind in ("homilador", "tuqqan") else "chiqarish_umumiy"
+    return {"homilador": "homilador", "tuqqan": "chiqarishdan_keyin", "bola": None}.get(patient.kind, "chiqarish_umumiy")
 
 
 def discharge(db, patient, note="", stay=None):
@@ -316,7 +377,7 @@ def discharge(db, patient, note="", stay=None):
     )
     scenario = after_hospital(patient, (stay.icd10 if stay else patient.icd10) or "")
     planned = any(c.scenario == scenario and c.status == "rejalashtirilgan" for c in patient.calls)
-    if not patient.consent_at or planned:  # no consent -> no calls; a repeated discharge does not double the schedule
+    if not scenario or not patient.consent_at or planned:  # no consent -> no calls; a repeated discharge does not double the schedule
         return t
     if patient.kind == "chaqaloq":
         base = patient.born_at or now()
@@ -326,7 +387,7 @@ def discharge(db, patient, note="", stay=None):
                 create_call(db, patient, "chaqaloq_30kun", planned_at=when)
     else:
         context = {"hospital": stay.hospital, "icd10": stay.icd10, "diagnosis": stay.diagnosis} if stay else {}
-        create_call(db, patient, scenario, planned_at=now() + timedelta(days=1), context=context)
+        create_call(db, patient, scenario, planned_at=max(now(), patient.discharged_at + timedelta(days=1)), context=context)
     return t
 
 
@@ -377,6 +438,7 @@ def task_done(db, task, note=""):
     task.status, task.done_at, task.note = "bajarildi", now(), note
     p = task.patient
     p.last_contact_at = now()
+    carepath.task_record(db, p, task)
     recompute(db, p)  # a closed specialist task releases the red-zone hold
     call = create_call(db, p, "tashrif_tasdiq", task_id=task.id) if p.consent_at else None
     notify(
@@ -473,29 +535,49 @@ def review_later(call_id, text):
 
 def callback(db, call, said=""):
     """The caller asked for a person. A member of staff must ring back within the time the call promised:
-    the patronage nurse, or the specialist when the patient is in the red zone. Overdue goes to the head."""
+    the patronage nurse, or the specialist when the patient is in the red zone. Overdue goes to the head.
+    A caller who asked for a doctor by name ("мне нужен доктор") gets a doctor: the family doctor, or the
+    specialist in the red zone, with an urgent notice."""
     p = call.patient
-    role = "mutaxassis" if p.zone == "red" else "hamshira"
+    doctor = extract.wants_doctor(said)
+    if call.scenario in (carepath.PRIVATE | {"dispanser"}):
+        role = "shifokor"
+    elif p.zone == "red":
+        role = "mutaxassis"
+    else:
+        role = "shifokor" if doctor else "hamshira"
     t = Task(
         patient_id=p.id,
         type="qayta_qongiroq",
         role=role,
-        reason=("Bemor xodim bilan gaplashishni so'radi" + (f": {said}" if said else ""))[:240],
+        reason=(("Bemor shifokorni so'radi" if doctor else "Bemor xodim bilan gaplashishni so'radi") + (f": {said}" if said else ""))[:240],
         due_at=now() + timedelta(minutes=dialogue.CALLBACK_MINUTES),
         created_at=now(),
     )
     db.add(t)
     p.tasks.append(t)
-    notify(
-        db,
-        p,
-        role,
-        "yellow",
-        f"QAYTA QO'NG'IROQ: {p.full_name} ({p.phone}) xodim bilan gaplashishni so'radi. {dialogue.CALLBACK_MINUTES} daqiqa ichida qo'ng'iroq qiling.",
-        f"ПЕРЕЗВОНИТЬ: {p.full_name} ({p.phone}) просит поговорить с сотрудником. Позвоните в течение {dialogue.CALLBACK_MINUTES} минут.",
-    )
-    call.answers = {**(call.answers or {}), "operator": {"value": "yes", "transcript": said}}
-    audit(db, "bemor", "operator_asked", p, f"-> {role}")
+    if doctor:
+        notify(
+            db,
+            p,
+            role,
+            "red",
+            f"BEMOR SHIFOKORNI SO'RADI: {p.full_name} ({p.phone}). {dialogue.CALLBACK_MINUTES} daqiqa ichida qo'ng'iroq qiling."
+            + (f" Bemor aytdi: «{said[:160]}»" if said else ""),
+            f"ПАЦИЕНТ ПРОСИТ ВРАЧА: {p.full_name} ({p.phone}). Позвоните в течение {dialogue.CALLBACK_MINUTES} минут."
+            + (f" Слова пациента: «{said[:160]}»" if said else ""),
+        )
+    else:
+        notify(
+            db,
+            p,
+            role,
+            "yellow",
+            f"QAYTA QO'NG'IROQ: {p.full_name} ({p.phone}) xodim bilan gaplashishni so'radi. {dialogue.CALLBACK_MINUTES} daqiqa ichida qo'ng'iroq qiling.",
+            f"ПЕРЕЗВОНИТЬ: {p.full_name} ({p.phone}) просит поговорить с сотрудником. Позвоните в течение {dialogue.CALLBACK_MINUTES} минут.",
+        )
+    call.answers = {**(call.answers or {}), "operator": {"value": "yes", "transcript": said, "doctor": doctor}}
+    audit(db, "bemor", "doctor_asked" if doctor else "operator_asked", p, f"-> {role}")
     return t
 
 
@@ -548,6 +630,7 @@ def finish_call(db, call):
         t = db.get(Task, call.task_id) if call.task_id else None
         if t and verified is not None:
             t.status = "tasdiqlandi" if verified else "nomuvofiq"
+            carepath.task_record(db, p, t)
             if not verified:
                 notify(
                     db,
@@ -572,7 +655,7 @@ def finish_call(db, call):
         data["complaints"] = sorted(set(complaints))
         data["extra_flags"] = sorted(set(extra))
         before = p.zone
-        zone, _ = add_observation(db, p, "qongiroq", data, quotes, "\n".join(lines), "Nigoh AI")
+        zone, _ = add_observation(db, p, "qongiroq", data, quotes, "\n".join(lines), "Mehr AI")
         # What the caller hears depends on this call's answers alone, not on the zone the patient was in before.
         own, found = rules.evaluate(p.kind, data)
         alert = bool(complaints) or own == "red"
@@ -591,8 +674,11 @@ def finish_call(db, call):
             )
             if own == "red":
                 open_task(db, p, "mutaxassis", "mutaxassis", uz, config.ACTIVE_CALL_HOURS)
+    if call.scenario in carepath.TARGETED:
+        carepath.finish_record(db, call, sc["questions"])
     # DMED has the call the moment it ends: the answers, and a flag on the record when they are alarming.
-    dmed.push(db, "QuestionnaireResponse: qo'ng'iroq", p, dmed.answers(call, sc), f"{sc['title']['uz']}: {', '.join(call.flags) or 'belgi yo`q'}")
+    if call.scenario not in carepath.TARGETED:
+        dmed.push(db, "QuestionnaireResponse: qo'ng'iroq", p, dmed.answers(call, sc), f"{sc['title']['uz']}: {', '.join(call.flags) or 'belgi yo`q'}")
     if alert:
         signs = ", ".join(rules.COMPLAINTS[c][0] for c in complaints if c in rules.COMPLAINTS) or "xavf belgilari"
         dmed.push(db, "Flag: xavf belgisi", p, dmed.flag(p, f"AI qo'ng'iroqda xavf belgilari: {signs}", call.finished_at), signs)

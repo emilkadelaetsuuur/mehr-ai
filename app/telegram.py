@@ -47,7 +47,7 @@ def handle_update(db, update):
     code = text[6:].strip()
     user = db.query(User).filter(User.link_code == code).first() if code else None
     if not user:
-        return "Kod topilmadi. Nigoh tizimidagi profilingizdan havolani oching."
+        return "Kod topilmadi. Mehr AI tizimidagi profilingizdan havolani oching."
     user.telegram_chat_id = str(chat)
     db.commit()
     return f"Ulandi: {user.full_name}. Endi bildirishnomalar shu yerga keladi."

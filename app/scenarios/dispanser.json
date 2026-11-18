@@ -7,8 +7,8 @@
  "basis": "Dispanser kuzatuvi: davolanishga rioya qilish va rejali ko'riklar. Qo'ng'iroqda tashxis aytilmaydi; suhbatdan oldin tug'ilgan yil so'raladi",
  "private": true,
  "greeting": {
-  "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. Sog'lig'ingiz va shifokor tayinlagan davolanish haqida to'rtta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
-  "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам четыре коротких вопроса о вашем самочувствии и назначенном врачом лечении. Отвечайте «да» или «нет»."
+  "uz": "Assalomu alaykum! Men Mehr AI — poliklinikaning sun'iy intellekt yordamchisiman. Sog'lig'ingiz va shifokor tayinlagan davolanish haqida to'rtta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Здравствуйте! Я Mehr AI — помощник поликлиники на основе искусственного интеллекта. Задам четыре коротких вопроса о вашем самочувствии и назначенном врачом лечении. Отвечайте «да» или «нет»."
  },
  "intro": {
   "uz": "Sog'lig'ingiz va shifokor tayinlagan davolanish haqida to'rtta qisqa savol beraman. «Ha» yoki «yo'q» deb javob bering.",

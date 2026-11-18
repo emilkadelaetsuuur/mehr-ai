@@ -1,0 +1,44 @@
+{
+  "id": "vaccine_adult",
+  "title": {
+    "uz": "Shaxsiy reja bo‘yicha emlash",
+    "ru": "Вакцинация по индивидуальному плану"
+  },
+  "who": "vaccine_adult",
+  "basis": "Индивидуальный план клиники / Klinikaning shaxsiy kuzatuv rejasi",
+  "greeting": {
+    "ru": "Здравствуйте. Вам звонит помощник поликлиники Mehr AI.",
+    "uz": "Assalomu alaykum. Sizga poliklinika yordamchisi Mehr AI qo‘ng‘iroq qilmoqda."
+  },
+  "intro": {
+    "ru": "У вас в карте есть плановая вакцинация.",
+    "uz": "Kartangizda rejali emlash bor."
+  },
+  "questions": [
+    {
+      "id": "given",
+      "ru": "Вы уже получили прививку, указанную в плане?",
+      "uz": "Rejada ko‘rsatilgan emlashni oldingizmi?",
+      "type": "yesno",
+      "flag_if": "no",
+      "extra": "callback"
+    },
+    {
+      "id": "appointment",
+      "ru": "Помочь уточнить дату или записаться на приём?",
+      "uz": "Sanani aniqlash yoki qabulga yozilishda yordam kerakmi?",
+      "type": "yesno",
+      "flag_if": "yes",
+      "extra": "callback"
+    }
+  ],
+  "closing_ok": {
+    "ru": "Спасибо. Ответы сохранены для вашего врача.",
+    "uz": "Rahmat. Javoblaringiz shifokoringiz uchun saqlandi."
+  },
+  "closing_alert": {
+    "ru": "Клиника получила ответы. Если нужна неотложная помощь, звоните 103.",
+    "uz": "Klinika javoblaringizni oldi. Shoshilinch yordam kerak bo‘lsa, 103 ga qo‘ng‘iroq qiling."
+  }
+}
+

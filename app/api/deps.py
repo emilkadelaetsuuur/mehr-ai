@@ -6,7 +6,7 @@ import time
 from fastapi import Depends, Header, HTTPException, Request, Response
 from sqlalchemy import event
 
-from .. import config, core
+from .. import carepath, config, core
 from ..db import Patient, SessionLocal, User
 
 ROLES = ("rahbar", "mutaxassis", "shifokor", "hamshira")
@@ -147,6 +147,7 @@ def task_json(t):
 
 def call_json(c):
     return {
+        "test_line": c.scenario in (carepath.TARGETED | {"dispanser"}) or bool(c.patient and c.patient.phone=="TEST"),
         "id": c.id,
         "token": c.token,
         "scenario": c.scenario,

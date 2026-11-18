@@ -68,6 +68,10 @@ CODE = {"oiv": "B20", "jyb": "A54", "sil": "A15", "gepatit": "B18", "diabet": "E
 
 def run(db, n=300, seed=7):
     rnd = random.Random(seed)
+    from . import carepath
+
+    for model in (carepath.TestRecord, carepath.HospitalEvent, carepath.VaccinePlan, carepath.Profile, carepath.DemoCase):
+        db.query(model).delete()
     for model in (DmedMessage, Vaccination, Hospitalization, Notice, Call, Task, RiskEvent, Observation, Patient):
         db.query(model).delete()
     db.commit()

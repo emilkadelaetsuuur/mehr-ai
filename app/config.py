@@ -19,7 +19,9 @@ PUBLIC_URL = os.getenv("PUBLIC_URL", "http://localhost:8000").rstrip("/")
 TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 
-DISTRICT = os.getenv("DISTRICT_NAME", "Namuna tumani")
+DISTRICT = os.getenv("DISTRICT_NAME", "").strip()
+if DISTRICT.casefold() == "namuna tumani":  # legacy demo configuration
+    DISTRICT = ""
 ACTIVE_CALL_HOURS = int(os.getenv("ACTIVE_CALL_HOURS", "24"))
 SILENT_DAYS = int(os.getenv("SILENT_DAYS", "7"))
 

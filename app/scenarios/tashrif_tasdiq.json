@@ -6,8 +6,8 @@
  "who": "any",
  "basis": "«Faol chaqiruv» nazorati va bemor fikri (№11 va №8 muammolar)",
  "greeting": {
-  "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. Shifokor tashrifi haqida ikkita savol beraman. «Ha» yoki «yo'q» deb javob bering.",
-  "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам два вопроса о визите врача. Отвечайте «да» или «нет»."
+  "uz": "Assalomu alaykum! Men Mehr AI — poliklinikaning sun'iy intellekt yordamchisiman. Shifokor tashrifi haqida ikkita savol beraman. «Ha» yoki «yo'q» deb javob bering.",
+  "ru": "Здравствуйте! Я Mehr AI — помощник поликлиники на основе искусственного интеллекта. Задам два вопроса о визите врача. Отвечайте «да» или «нет»."
  },
  "intro": {
   "uz": "Shifokor tashrifi haqida ikkita savol beraman. «Ha» yoki «yo'q» deb javob bering.",

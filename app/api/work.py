@@ -3,10 +3,22 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import joinedload
 
-from .. import core, simline, telephony
+from .. import carepath, core, simline, telephony
 from ..db import Call, Patient, Task
 from ..schemas import DialIn, NoteIn, RoundIn
+from .care import authorized
 from .deps import call_json, can_close, current_user, db_session, snapshot, task_json
+
+
+def private_scope(scenario, u):
+    if scenario not in (carepath.PRIVATE | {"dispanser"}):
+        return None
+    if u.role in {"rahbar", "mutaxassis"}:
+        return None
+    if u.role == "shifokor" and u.doctor_name:
+        return u.doctor_name
+    raise HTTPException(403, "role")
+
 
 router = APIRouter(prefix="/api")
 
@@ -45,20 +57,20 @@ def done(tid: int, body: NoteIn = NoteIn(), db=Depends(db_session), u=Depends(cu
 
 
 @router.get("/calls")
-def calls(db=Depends(db_session)):
+def calls(db=Depends(db_session), u=Depends(current_user)):
     def build():
         rows = db.query(Call).options(joinedload(Call.patient)).order_by(Call.planned_at.desc()).limit(150).all()
-        return [call_json(c) for c in rows]
+        return [call_json(c) for c in rows if c.scenario not in (carepath.PRIVATE | {"dispanser"}) or authorized(db, c.patient, u)]
 
-    return snapshot(("calls",), build)
+    return snapshot(("calls", u.role, u.doctor_name), build)
 
 
 @router.get("/calls/audience")
-def round_audience(scenario: str, zone: str = "", db=Depends(db_session)):
+def round_audience(scenario: str, zone: str = "", db=Depends(db_session), u=Depends(current_user)):
     """How many patients a calling round would reach, and why the others are left out."""
     if scenario not in core.SCENARIOS:
         raise HTTPException(400, "scenario")
-    a = core.audience(db, scenario, zone if zone in ("red", "yellow", "green") else "")
+    a = core.audience(db, scenario, zone if zone in ("red", "yellow", "green") else "", private_scope(scenario, u))
     return {"fit": len(a["fit"]), "no_consent": a["no_consent"], "already": a["already"], "who": core.SCENARIOS[scenario].get("who", "any")}
 
 
@@ -67,11 +79,19 @@ def start_round(body: RoundIn, db=Depends(db_session), u=Depends(current_user)):
     """Start a calling round for a group, or one trial call whose link opens as a QR code."""
     if body.scenario not in core.SCENARIOS:
         raise HTTPException(400, "scenario")
-    if body.test:
+    doctor = private_scope(body.scenario, u)
+    if body.test and body.scenario in carepath.TARGETED:
+        from .care import example_call
+
+        c = example_call(db, body.scenario, u, body.lang)
+        made = [c] if c else []
+    elif body.test:
         c = core.trial_call(db, body.scenario, body.lang)
+        if c and doctor is not None and c.patient.doctor != doctor:
+            raise HTTPException(403, "role")
         made = [c] if c else []
     else:
-        made = core.start_round(db, body.scenario, body.lang, body.zone, body.limit)
+        made = core.start_round(db, body.scenario, body.lang, body.zone, body.limit, doctor)
     if made:
         core.audit(
             db, u, "round_started", None if len(made) > 1 else made[0].patient, f"{body.scenario}: {len(made)} qo'ng'iroq" + (" (sinov)" if body.test else "")
@@ -85,8 +105,10 @@ def dial(cid: int, body: DialIn = DialIn(), db=Depends(db_session), u=Depends(cu
     """Ring a real phone (needs a telephony provider in the settings): the number on the patient's card,
     or another number given for this call, which is how a demo rings the presenter's own phone."""
     c = db.get(Call, cid)
-    if not c or c.status in ("tugadi", "javobsiz"):
+    if not c or c.status not in core.UNFINISHED:
         raise HTTPException(404, "call")
+    if carepath.test_line(db, c):
+        raise HTTPException(409, "test_call_by_link")
     if not telephony.enabled():
         raise HTTPException(409, "telephony")
     to = telephony.number(body.phone.strip() or c.patient.phone)
@@ -105,8 +127,10 @@ def dial(cid: int, body: DialIn = DialIn(), db=Depends(db_session), u=Depends(cu
 def ring_by_sim(cid: int, body: DialIn = DialIn(), db=Depends(db_session), u=Depends(current_user)):
     """Ring through the phone with a SIM card that stands by as the telephone line (app/simline.py)."""
     c = db.get(Call, cid)
-    if not c or c.status in ("tugadi", "javobsiz"):
+    if not c or c.status not in core.UNFINISHED:
         raise HTTPException(404, "call")
+    if carepath.test_line(db, c):
+        raise HTTPException(409, "test_call_by_link")
     if not simline.online():
         raise HTTPException(409, "line")
     to = telephony.number(body.phone.strip() or c.patient.phone)

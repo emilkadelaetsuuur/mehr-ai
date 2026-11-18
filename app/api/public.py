@@ -2,16 +2,15 @@
 
 import logging
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from starlette.background import BackgroundTask
 
-from .. import closing, config, core, dialogue, extract, rules, simline, talk, voicelab
+from .. import call_access, carepath, closing, config, core, dialogue, extract, rules, simline, talk, voicelab
 from ..db import Call
 from .deps import db_session
 
-router = APIRouter(prefix="/api/call")
 log = logging.getLogger("nigoh.line")
 MAX_ANSWER = 3 * 1024 * 1024
 MAX_APPEAL = 8 * 1024 * 1024
@@ -20,10 +19,18 @@ BUTTON = {"yes": "ha (tugma)", "no": "yo'q (tugma)"}
 
 
 def get_call(db, token: str) -> Call:
-    c = db.query(Call).filter(Call.token == token).first()
+    c = db.info.get(("call", token)) or db.query(Call).filter(Call.token == token).first()
     if not c:
         raise HTTPException(404, "call")
+    db.info[("call", token)] = c
     return c
+
+
+def protect(token: str, request: Request, db=Depends(db_session)):
+    call_access.public_guard(db, get_call(db, token), request)
+
+
+router = APIRouter(prefix="/api/call", dependencies=[Depends(protect)])
 
 
 def phrase(sc, part, lang):
@@ -34,29 +41,36 @@ def phrase(sc, part, lang):
 
 
 @router.get("/{token}")
-def info(token: str, db=Depends(db_session)):
+def info(token: str, request: Request, db=Depends(db_session)):
     c = get_call(db, token)
     sc, lang = core.SCENARIOS[c.scenario], c.lang or "uz"
     hello, intro = talk.opening(db, c)
+    protected = c.scenario in carepath.TARGETED or c.scenario == "dispanser"
+    hidden = protected and not call_access.valid(c.token, "talk", request.cookies.get(call_access.COOKIE))
+    questions = sc["questions"]
     tip = talk.tips(db, c)
     return {
+        "protected": protected,
+        "private_question": call_access.QUESTION[lang],
         "status": c.status,
         "lang": lang,
-        "title": sc["title"][lang],
-        "greeting": sc["greeting"][lang],  # the phone line still opens with it
+        "title": call_access.NEUTRAL[lang] if hidden else sc["title"][lang],
+        "greeting": call_access.NEUTRAL[lang] if hidden else sc["greeting"][lang],  # the phone line still opens with it
         "hello": hello,  # who is calling, and "am I speaking with ...?"
-        "intro": intro,  # after her "yes": thanks by name, what the call is about
+        "intro": "" if hidden else intro,  # after her "yes": thanks by name, what the call is about
         "max_questions": talk.MAX_QUESTIONS,
-        "ask_key": talk.ask_key(c),  # the invitation to ask her own questions, worded for whom the call is for
+        "ask_key": "ask_q" if hidden else talk.ask_key(c),  # the invitation to ask her own questions, worded for whom the call is for
         # `if`: a question asked only after a certain answer to an earlier one
-        "questions": [{"id": q["id"], "text": q[lang], "type": q["type"], "if": q.get("if")} for q in sc["questions"]],
+        "questions": [{"id": q["id"], "text": q[lang], "type": q["type"], "if": q.get("if")} for q in ([] if hidden else questions)],
         "verify_year": talk.needs_year(c),  # a second key after the name, for calls that must reach nobody else
-        "tips": ({"offer": tip[0], "texts": tip[1]} if tip else None),  # for a first-time mother
-        "closing_ok": sc["closing_ok"][lang],
-        "closing_alert": sc["closing_alert"][lang],
+        "tips": ({"offer": tip[0], "texts": tip[1]} if tip and not hidden else None),  # for a first-time mother
+        "closing_ok": "" if hidden else sc["closing_ok"][lang],
+        "closing_alert": "" if hidden else sc["closing_alert"][lang],
         # spoken while the closing is being written; absent when the fixed phrase is used and nothing has to be waited for
         "bridge": closing.BRIDGE.get(lang) if closing.writers(lang) else None,
-        "say": dialogue.say(lang),  # reactions, the message for the doctor, the hand-over to a person
+        "say": {
+            k: v for k, v in dialogue.say(lang).items() if not hidden or k in call_access.NEUTRAL_PHRASES
+        },  # reactions, the message for the doctor, the hand-over to a person
         "clinic_phone": config.CLINIC_PHONE or None,
         "tts": voicelab.enabled(),
     }
@@ -68,7 +82,9 @@ def audio(token: str, part: str, i: int | None = None, n: int | None = None, db=
     `reply` with `n` and `i` is one sentence of the answer to her n-th question."""
     c = get_call(db, token)
     lang = c.lang or "uz"
-    if part == "bridge":
+    if part == "privacy":
+        text = call_access.QUESTION[lang]
+    elif part == "bridge":
         text = closing.BRIDGE.get(lang)
     elif part.startswith("say_"):
         text = (dialogue.SAY.get(part[4:]) or {}).get(lang)
@@ -91,7 +107,7 @@ def audio(token: str, part: str, i: int | None = None, n: int | None = None, db=
     wav = voicelab.tts(text, lang) if text else None
     if not wav:
         raise HTTPException(404, "no audio")
-    return Response(wav, media_type="audio/wav", headers={"Cache-Control": "public, max-age=86400"})
+    return Response(wav, media_type="audio/wav", headers={"Cache-Control": "private, no-store"})
 
 
 @router.post("/{token}/answer")
@@ -135,7 +151,9 @@ async def answer(token: str, qid: str = Form(...), value: str = Form(""), audio:
 
 
 @router.post("/{token}/identity")
-async def identity(token: str, qid: str = Form("shaxs"), value: str = Form(""), audio: UploadFile = File(None), db=Depends(db_session)):
+async def identity(
+    token: str, response: Response, request: Request, qid: str = Form("shaxs"), value: str = Form(""), audio: UploadFile = File(None), db=Depends(db_session)
+):
     """Her answer to "am I speaking with ...?" (and, with qid "yil", her year of birth in a call that needs
     the second key). Only a "yes" lets the call go on. After a "no" nothing about health is said: the call
     ends, stays planned and counts as an attempt."""
@@ -144,6 +162,8 @@ async def identity(token: str, qid: str = Form("shaxs"), value: str = Form(""), 
         raise HTTPException(400, "call")
     lang = c.lang or "uz"
     if qid == "yil":
+        if not talk.needs_year(c) or not call_access.valid(token, "name", request.cookies.get(call_access.COOKIE)):
+            raise HTTPException(403, "recipient_confirmation")
         said = value.strip()[:40]
         if audio is not None:
             raw = await audio.read()
@@ -152,6 +172,7 @@ async def identity(token: str, qid: str = Form("shaxs"), value: str = Form(""), 
             res = await run_in_threadpool(voicelab.stt, raw, audio.filename or "a.webm", audio.content_type or "audio/webm", lang) if len(raw) > 800 else None
             said = ((res or {}).get("text") or "").strip()[:80]
         val = await run_in_threadpool(talk.year_matches, said, c.patient.birth_year or 0)
+        call_access.grant(response, token, "identity" if val == "yes" else "name")
         if val == "yes":
             c.answers = {**(c.answers or {}), "yil": {"value": "yes", "transcript": "tug'ilgan yili mos keldi"}}
         elif val == "no":
@@ -175,6 +196,9 @@ async def identity(token: str, qid: str = Form("shaxs"), value: str = Form(""), 
     elif value in ("yes", "no"):
         transcript, val = BUTTON[value], value
     human = audio is not None and extract.wants_human(transcript)  # "give me a person" is not a "no"
+    if c.scenario in carepath.TARGETED or c.scenario == "dispanser":
+        scope = "name" if talk.needs_year(c) else "identity"
+        call_access.grant(response, token, scope if val == "yes" else "closed")
     if val == "yes":
         c.answers = {**(c.answers or {}), "shaxs": {"value": "yes", "transcript": transcript}}
         c.status = "jarayonda"
@@ -182,6 +206,29 @@ async def identity(token: str, qid: str = Form("shaxs"), value: str = Form(""), 
         core.wrong_person(db, c, transcript)
     db.commit()
     return {"qid": "shaxs", "value": val, "transcript": transcript, "flagged": False, "operator": human}
+
+
+@router.post("/{token}/privacy")
+async def privacy(token: str, request: Request, response: Response, value: str = Form(""), audio: UploadFile = File(None), db=Depends(db_session)):
+    c = get_call(db, token)
+    if c.status not in core.UNFINISHED or not call_access.valid(token, "identity", request.cookies.get(call_access.COOKIE)):
+        raise HTTPException(403, "recipient_confirmation")
+    lang = c.lang or "uz"
+    if audio is not None:
+        raw = await audio.read()
+        if len(raw) > MAX_ANSWER:
+            raise HTTPException(400, "audio size")
+        result = await run_in_threadpool(voicelab.stt, raw, audio.filename or "reply.webm", audio.content_type or "audio/webm", lang) if raw else None
+        value = extract.yes_no((result or {}).get("text", ""), call_access.QUESTION[lang])
+    yes = value == "yes"
+    call_access.grant(response, token, "talk" if yes else "closed")
+    c.answers = {**(c.answers or {}), "privacy": {"value": "yes" if yes else "no"}}
+    if not yes:
+        c.status = "rejalashtirilgan"
+        task = core.open_task(db, c.patient, "qayta_qongiroq", "shifokor", "Согласовать удобное время контакта", 24)
+        carepath.task_record(db, c.patient, task)
+    db.commit()
+    return {"value": "yes" if yes else "no", "flagged": False}
 
 
 @router.post("/{token}/ask")
@@ -285,7 +332,8 @@ def operator(token: str, said: str = Form(""), db=Depends(db_session)):
         raise HTTPException(400, "call")
     t = core.callback(db, c, said.strip()[:200])
     db.commit()
-    return {"ok": True, "minutes": dialogue.CALLBACK_MINUTES, "role": t.role, "phone": config.CLINIC_PHONE or None}
+    doctor = extract.wants_doctor(said)
+    return {"ok": True, "minutes": dialogue.CALLBACK_MINUTES, "role": t.role, "doctor": doctor, "phone": config.CLINIC_PHONE or None}
 
 
 @router.post("/{token}/finish")

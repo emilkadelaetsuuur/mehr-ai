@@ -2,6 +2,7 @@
 
 import hashlib
 import logging
+import mimetypes
 import os
 import threading
 import time
@@ -12,8 +13,8 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import auth, closing, config, core, dialogue, dmed, ml, seed, telegram, voicelab
+from .api import care, line, patients, public, system, tel, voice, work
 from .api import dmed as dmed_api
-from .api import line, patients, public, system, tel, voice, work
 from .db import Patient, SessionLocal, init_db
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
@@ -26,7 +27,12 @@ _stop = threading.Event()
 def _build():
     """A short fingerprint of the interface files: it changes whenever a release changes them."""
     h = hashlib.sha1()
-    for name in ("app.js", "i18n.js", "call.js", "styles.css", "index.html"):
+    files = (
+        "app.js", "i18n.js", "call.js", "styles.css", "index.html", "home.css", "home.js", "care-work.js",
+        "voice-studio.js", "brand/studio.css", "brand/type.css", "brand/mehr-wave-blue.svg", "brand/clinic.css",
+        "brand/language.js", "brand/language.css", "brand/navigation.svg",
+    )
+    for name in files:
         with open(os.path.join(WEB, name), "rb") as f:
             h.update(f.read())
     return h.hexdigest()[:10]
@@ -104,7 +110,7 @@ async def lifespan(_app):
     _stop.set()
 
 
-app = FastAPI(title="Nigoh", version="1.1.0", docs_url="/api/docs", openapi_url="/api/openapi.json", lifespan=lifespan)
+app = FastAPI(title="Mehr AI", version="1.1.0", docs_url="/api/docs", openapi_url="/api/openapi.json", lifespan=lifespan)
 
 
 @app.middleware("http")
@@ -118,14 +124,16 @@ async def session_guard(request: Request, call_next):
     if guarded and request.method == "GET" and runaway((request.cookies.get(auth.COOKIE, ""), path)):
         return JSONResponse({"detail": "reload"}, status_code=401)
     resp = await call_next(request)
-    if path.endswith((".html", ".js", ".css")) or path == "/" or path.startswith("/call/"):
+    if path.endswith((".html", ".js", ".css")) or path in ("/", "/cabinet/", "/manifest.json", "/brand/mehr-wave-blue.svg") or path.startswith("/call/"):
         resp.headers["Cache-Control"] = "no-cache"
+    if path.startswith(("/api/", "/call/")):
+        resp.headers["Cache-Control"] = "private, no-store"
     if path.startswith("/api/"):
         resp.headers["X-Nigoh-Build"] = BUILD  # a tab opened before a release sees a new value and reloads itself
     return resp
 
 
-for module in (system, patients, work, voice, public, tel, line, dmed_api):
+for module in (system, patients, work, voice, public, tel, line, care, dmed_api):
     app.include_router(module.router)
 
 
@@ -134,4 +142,12 @@ def call_page(token: str):
     return FileResponse(os.path.join(WEB, "call.html"))
 
 
+@app.get("/brand/mark.svg", include_in_schema=False)
+@app.get("/icon.svg", include_in_schema=False)
+def previous_brand_icon():
+    return FileResponse(os.path.join(WEB, "brand", "mehr-wave-blue.svg"), media_type="image/svg+xml", headers={"Cache-Control": "no-cache"})
+
+
+mimetypes.add_type("image/webp", ".webp")
+mimetypes.add_type("font/woff2", ".woff2")
 app.mount("/", StaticFiles(directory=WEB, html=True), name="web")

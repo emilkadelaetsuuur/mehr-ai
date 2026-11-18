@@ -1,7 +1,7 @@
 """Measure how accurately dictated phrases become card fields.
 
 Run inside the app container:  python -m scripts.eval
-Writes data/eval.json, which the "Tizim haqida" page shows. Text-level test: it checks the
+Writes data/eval.json (served in /api/meta as "eval"). Text-level test: it checks the
 LLM + quote-verification step. Audio recognition is measured separately with real recordings.
 """
 

@@ -1,0 +1,52 @@
+{
+  "id": "sti_followup",
+  "title": {
+    "uz": "Jinsiy yo‘l bilan yuqadigan infeksiya bo‘yicha kuzatuv",
+    "ru": "Контроль после лечения ИППП"
+  },
+  "who": "sti_followup",
+  "basis": "Индивидуальный план клиники / Klinikaning shaxsiy kuzatuv rejasi",
+  "greeting": {
+    "ru": "Здравствуйте. Вам звонит помощник поликлиники Mehr AI.",
+    "uz": "Assalomu alaykum. Sizga poliklinika yordamchisi Mehr AI qo‘ng‘iroq qilmoqda."
+  },
+  "intro": {
+    "ru": "Уточним самочувствие и план контрольного визита.",
+    "uz": "Ahvolingiz va nazorat qabuli rejasini aniqlaymiz."
+  },
+  "questions": [
+    {
+      "id": "symptoms",
+      "ru": "Сохраняются ли симптомы, по поводу которых вы обращались к врачу?",
+      "uz": "Shifokorga murojaat qilishingizga sabab bo‘lgan alomatlar saqlanib qoldimi?",
+      "type": "yesno",
+      "flag_if": "yes",
+      "extra": "callback"
+    },
+    {
+      "id": "instructions",
+      "ru": "Удалось ли выполнить назначения по поводу инфекции?",
+      "uz": "Infeksiya bo‘yicha tayinlangan ko‘rsatmalarni bajara oldingizmi?",
+      "type": "yesno",
+      "flag_if": "no",
+      "extra": "callback"
+    },
+    {
+      "id": "test",
+      "ru": "Нужна ли помощь с контрольным обследованием?",
+      "uz": "Nazorat tekshiruvini rejalashda yordam kerakmi?",
+      "type": "yesno",
+      "flag_if": "yes",
+      "extra": "callback"
+    }
+  ],
+  "closing_ok": {
+    "ru": "Спасибо. Ответы сохранены для вашего врача.",
+    "uz": "Rahmat. Javoblaringiz shifokoringiz uchun saqlandi."
+  },
+  "closing_alert": {
+    "ru": "Клиника получила ответы. Если нужна неотложная помощь, звоните 103.",
+    "uz": "Klinika javoblaringizni oldi. Shoshilinch yordam kerak bo‘lsa, 103 ga qo‘ng‘iroq qiling."
+  }
+}
+

@@ -11,6 +11,10 @@ The Uzbek texts were written by a non-native speaker and must be read by one bef
 CALLBACK_MINUTES = 30  # named aloud in `operator_ok`: change the phrase together with the number
 
 SAY = {
+    "private_later": {
+        "ru": "Хорошо. Поликлиника уточнит удобное время. Всего доброго.",
+        "uz": "Mayli. Poliklinika sizga qulay vaqtni aniqlaydi. Salomat bo‘ling.",
+    },
     # The call opens by asking whether the right person picked up (app/talk.py words that question, with her name).
     "who_retry": {
         "uz": "Kechirasiz, yaxshi eshitmadim. Bu sizmisiz? Iltimos, «ha» yoki «yo'q» deng.",
@@ -101,8 +105,8 @@ SAY = {
     "ask_told": {"uz": "Aytganlaringizni shifokoringizga ham yetkazdim.", "ru": "Я также передала ваши слова вашему врачу."},
     # after the greeting: how to reach a person
     "hint": {
-        "uz": "Agar jonli xodim bilan gaplashmoqchi bo'lsangiz, istalgan payt «operator» deng.",
-        "ru": "Если захотите поговорить с сотрудником, в любой момент скажите «оператор».",
+        "uz": "Agar shifokor yoki xodim bilan gaplashmoqchi bo'lsangiz, istalgan payt «shifokor» yoki «operator» deng.",
+        "ru": "Если захотите поговорить с врачом или сотрудником, в любой момент скажите «врач» или «оператор».",
     },
     # short reactions, used in turn after an answer that raises no concern
     "ack1": {"uz": "Tushunarli.", "ru": "Понятно."},
@@ -151,6 +155,11 @@ SAY = {
     "appeal_fail": {
         "uz": "Kechirasiz, xabaringizni yozib ololmadim. Poliklinikaga qo'ng'iroq qilishingiz mumkin.",
         "ru": "Простите, не получилось записать обращение. Вы можете позвонить в поликлинику.",
+    },
+    # she asked for a doctor: the questions stop at once and the doctor is told
+    "doctor_ok": {
+        "uz": "Tushundim. So'rovingizni hoziroq shifokorga yubordim, u sizga yarim soat ichida qo'ng'iroq qiladi. Ahvolingiz og'irlashsa, bir yuz uch raqamiga qo'ng'iroq qiling.",
+        "ru": "Поняла. Я сразу передала вашу просьбу врачу, он перезвонит вам в течение получаса. Если станет хуже, звоните по номеру сто три.",
     },
     "operator_ok": {
         "uz": "Tushundim. Poliklinika xodimi sizga yarim soat ichida qo'ng'iroq qiladi. Ahvolingiz og'irlashsa, bir yuz uch raqamiga qo'ng'iroq qiling.",

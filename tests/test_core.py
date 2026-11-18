@@ -2,6 +2,7 @@
 
 import os
 import tempfile
+from datetime import UTC
 
 _tmp = tempfile.mkdtemp()
 os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"  # never the real database
@@ -25,6 +26,7 @@ for _k in (
     os.environ[_k] = ""
 for _k in ("ANTHROPIC_BASE_URL", "CLAUDE_MODEL", "CLAUDE_LANGS", "CLAUDE_CLOSING", "CLAUDE_TIMEOUT", "VOICELAB_CLOSING"):
     os.environ.pop(_k, None)  # the server's choice of model and languages is not what the tests are about
+
 
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -84,6 +86,7 @@ def test_full_flow():
         assert res["verified"] is False
         assert c.get("/api/tasks", params={"status": "nomuvofiq"}).json()
         baby = c.get("/api/patients", params={"q": "Valiyev Amir"}).json()[0]
+        c.post(f"/api/patients/{baby['id']}/discharge", json={}).raise_for_status()
         calls = c.get(f"/api/patients/{baby['id']}").json()["calls"]
         assert any(x["scenario"] == "chaqaloq_30kun" for x in calls)
         call = c.post(f"/api/patients/{baby['id']}/calls", json={"scenario": "chaqaloq_30kun"}).json()
@@ -172,7 +175,7 @@ def test_symptom_calls_alarm_only_on_yes():
     from app import core
 
     # two scenarios ask about something that should have happened: "did the doctor come?", "was the child vaccinated?"
-    symptom = [s for s in core.SCENARIOS.values() if s["id"] not in ("tashrif_tasdiq", "emlash")]
+    symptom = [s for s in core.SCENARIOS.values() if s["id"] not in ({"tashrif_tasdiq", "emlash"} | core.carepath.TARGETED)]
     assert len(symptom) == 8 and all(q["flag_if"] == "yes" for s in symptom for q in s["questions"] if q["type"] == "yesno")
     with TestClient(app) as c:
         p = c.post("/api/patients/confirm", json={"fields": {"full_name": "Qo'ng'iroq Sinov", "birth_year": 1996, "kind": "homilador"}, "consent": True}).json()
@@ -264,6 +267,11 @@ def test_a_message_goes_to_the_person_the_patient_is_attached_to():
         and extract.wants_human("позовите оператора")
         and not extract.wants_human("Yo'q, bosh og'rimayapti")
     )
+    # stop words: a caller who asks for a doctor is not asked the next question; a doctor merely named in an answer is not a request
+    for asked in ("Доктор, мне нужен доктор", "Врача!", "Позовите врача", "Shifokor kerak", "Shifokorni chaqiring", "doktor"):
+        assert extract.wants_doctor(asked) and extract.wants_human(asked), asked
+    for answer in ("Нет, врач отменил таблетки", "Врач приходил", "Yo'q, shifokor kelmadi", "Когда мне к врачу идти?", "Нет"):
+        assert not extract.wants_doctor(answer) and not extract.wants_human(answer), answer
     with TestClient(app) as c:
         doctor, nurse = {"X-Role": "shifokor"}, {"X-Role": "hamshira"}  # the demo family doctor is Qosimova D.
 
@@ -332,17 +340,25 @@ def test_a_caller_can_ask_for_a_person():
     with TestClient(app) as c:
         p = c.post("/api/patients/confirm", json={"fields": {"full_name": "Operator Sinov", "birth_year": 1999, "kind": "homilador"}, "consent": True}).json()
 
-        def ask_for_person():
+        def ask_for_person(said="Operator bilan gaplashmoqchiman"):
             k = c.post(f"/api/patients/{p['id']}/calls", json={"scenario": "homilador"}).json()
             first = c.get(f"/api/call/{k['token']}").json()
-            assert first["say"]["operator_ok"] and first["say"]["appeal_q"]
+            assert first["say"]["operator_ok"] and first["say"]["doctor_ok"] and first["say"]["appeal_q"]
             c.post(f"/api/call/{k['token']}/answer", data={"qid": first["questions"][0]["id"], "value": "no"})
-            r = c.post(f"/api/call/{k['token']}/operator", data={"said": "Operator bilan gaplashmoqchiman"}).json()
+            r = c.post(f"/api/call/{k['token']}/operator", data={"said": said}).json()
             res = c.post(f"/api/call/{k['token']}/finish?quiet=1").json()  # answers so far are kept, no closing is composed
             return r, res
 
+        # "мне нужен доктор" is a stop word: the family doctor, not the nurse, must ring back, and is told urgently
+        r, _ = ask_for_person("Доктор, мне нужен доктор")
+        assert r["doctor"] and r["role"] == "shifokor"
+        (t,) = [x for x in c.get("/api/tasks", headers={"X-Role": "rahbar"}).json() if x["patient"]["id"] == p["id"]]
+        assert t["type"] == "qayta_qongiroq" and t["role"] == "shifokor" and "shifokorni so'radi" in t["reason"]
+        assert any(n["level"] == "red" and "просит врача" in n["ru"].lower() for n in c.get("/api/dashboard").json()["notices"] if n["patient_id"] == p["id"])
+        c.post(f"/api/tasks/{t['id']}/done", headers={"X-Role": "rahbar"})
+
         r, res = ask_for_person()
-        assert r["ok"] and r["role"] == "hamshira" and r["minutes"] == dialogue.CALLBACK_MINUTES == 30
+        assert r["ok"] and not r["doctor"] and r["role"] == "hamshira" and r["minutes"] == dialogue.CALLBACK_MINUTES == 30
         assert "operator" in res["flags"] and res["closing_parts"] is None
         (t,) = [x for x in c.get("/api/tasks", headers={"X-Role": "hamshira"}).json() if x["patient"]["id"] == p["id"]]
         assert t["type"] == "qayta_qongiroq" and t["status"] == "ochiq"
@@ -973,6 +989,11 @@ def test_a_confidential_group_is_marked_for_doctors_and_never_named_in_a_call():
         assert call["patient"]["name"] == "Toshmatov Sardor"
         info = c.get(f"/api/call/{call['token']}").json()
         said = json.dumps(info, ensure_ascii=False)
+        assert info["questions"] == [] and info["intro"] == ""
+        c.post(f"/api/call/{call['token']}/identity", data={"value": "yes"}).raise_for_status()
+        c.post(f"/api/call/{call['token']}/identity", data={"qid": "yil", "value": "1990"}).raise_for_status()
+        c.post(f"/api/call/{call['token']}/privacy", data={"value": "yes"}).raise_for_status()
+        info = c.get(f"/api/call/{call['token']}").json()
         assert info["verify_year"] and "Men Sardor Toshmatov bilan gaplashyapmanmi?" in info["hello"] and info["intro"].startswith("Rahmat, Sardor aka.")
         assert not any(word in said for word in ("OIV", "ВИЧ", "infeksiya", "B20"))  # nothing in the call names the disease
         # ...and nothing in it is about somebody else's life: he is invited to ask about treatment, not about babies
@@ -994,14 +1015,18 @@ def test_a_confidential_group_is_marked_for_doctors_and_never_named_in_a_call():
         assert key(value="yes") == "yes" and key(qid="yil", value="1985") == "no"  # the name is not enough
         assert row()["attempts"] == 1 and row()["status"] == "jarayonda" and row()["answers"]["shaxs"]["value"] == "no"
         assert key(qid="yil", value="bilmayman") == "unclear" and key(qid="yil", value="1990") == "yes"
+        c.post(f"/api/call/{call['token']}/privacy", data={"value": "yes"}).raise_for_status()
         for q in info["questions"]:
             c.post(f"/api/call/{call['token']}/answer", data={"qid": q["id"], "value": "yes" if q["id"] == "dori" else "no"})
         res = c.post(f"/api/call/{call['token']}/finish").json()
         assert not res["alert"] and res["flags"] == ["dori"] and res["zone"] == "yellow"
         heard = [n for n in c.get("/api/dashboard", headers=nurse).json()["notices"] if n["patient_id"] == pid]
         assert heard and not any(word in n["uz"] + n["ru"] for n in heard for word in ("OIV", "ВИЧ", "B20"))
+        second = c.post(f"/api/patients/{pid}/calls", json={"scenario": "dispanser"}).json()["token"]
+        for endpoint, data in [("identity", {"value": "yes"}), ("identity", {"qid": "yil", "value": "1990"}), ("privacy", {"value": "yes"})]:
+            c.post(f"/api/call/{second}/{endpoint}", data=data).raise_for_status()
         r = c.post(
-            f"/api/call/{c.post(f'/api/patients/{pid}/calls', json={'scenario': 'dispanser'}).json()['token']}/ask",
+            f"/api/call/{second}/ask",
             data={"text": "Dorini qachon ichish kerak?"},
         )
         assert r.json()["kind"] == "doctor"  # no model at hand: the question goes to a person
@@ -1023,7 +1048,12 @@ def test_frontend_script_is_complete():
     import pathlib
     import re
 
-    js = pathlib.Path("web/app.js").read_text(encoding="utf-8")
+    web = pathlib.Path("web")
+    cabinet = (web / "cabinet/index.html").read_text(encoding="utf-8")
+    scripts = re.findall(r'<script src="/([^"]+)"', cabinet)
+    assert scripts.index("voice-studio.js") < scripts.index("app.js")
+    assert all((web / script).is_file() for script in scripts)
+    js = (web / "app.js").read_text(encoding="utf-8")
     # A screen redraws itself, so its refresh timer must be replaced, never added: timers that pile up double
     # the requests on every tick (a tab left open took the site down this way).
     assert "S.timers.push" not in js and js.count("refreshEvery(") == 6
@@ -1034,7 +1064,12 @@ def test_frontend_script_is_complete():
         "tasks",
         "calls",
         "voice",
-        "about",
+        "registryFilters",
+        "registryPager",
+        "kindTitle",
+        "dmedFacts",
+        "dmedSummary",
+        "ruText",
         "profile",
         "showLogin",
         "showCall",
@@ -1047,3 +1082,177 @@ def test_frontend_script_is_complete():
         "marksOf",
         "stayRow",
     } <= defined
+    # the head can put the demonstration back to its start from the profile (the "about" screen that had it is gone)
+    assert 'id="preset"' in js and 'api("/demo/reset"' in js
+    # every button the patient card wires up must be drawn, or be wired only when it is there:
+    # a handler on a missing button stopped the whole card from opening
+    card = js[js.index("async function patient(") : js.index("/* ---------- voice")]
+    for button in set(re.findall(r'\$\("#(\w+)"\)\.onclick', card)) - {"app"}:  # #app is the page itself
+        assert f'id="{button}"' in card or f'if ($("#{button}"))' in card, button
+
+
+def test_personal_protocols_write_back_only_after_recipient_and_privacy_checks():
+    from datetime import date
+
+    from app import carepath
+    from app.db import SessionLocal
+
+    with TestClient(app) as client:
+
+        def case(scenario):
+            response = client.post("/api/care/examples/" + scenario)
+            response.raise_for_status()
+            return response.json()
+
+        adult = case("hiv_followup")
+        pid = adult["patient_id"]
+        assert case("hiv_followup")["patient_id"] == pid
+        ids = {s["id"] for s in adult["eligible"]}
+        assert "hiv_followup" in ids and not ids & {"vaccine_child", "homilador", "first_birth_care", "sti_followup"}
+        assert client.post(f"/api/patients/{pid}/calls", json={"scenario": "first_birth_care"}).status_code == 409
+        assert client.get(f"/api/care/patients/{pid}", headers={"X-Role": "hamshira"}).status_code == 403
+        assert client.get(f"/api/patients/{pid}/fhir", headers={"X-Role": "hamshira"}).status_code == 403
+        call = adult["calls"][0]
+        route = "/api" + call["url"]
+        neutral = client.get(route).json()
+        assert neutral["questions"] == [] and neutral["intro"] == "" and neutral["verify_year"]
+        for action in ("audio/supply", "audio/intro"):
+            assert client.get(route + "/" + action).status_code == 403
+        assert client.post(route + "/answer", data={"qid": "supply", "value": "no"}).status_code == 403
+        client.post(route + "/identity", data={"value": "yes"}).raise_for_status()
+        assert client.post(route + "/privacy", data={"value": "yes"}).status_code == 403
+        client.post(route + "/identity", data={"qid": "yil", "value": adult["profile"]["birthday"][:4]}).raise_for_status()
+        client.post(route + "/privacy", data={"value": "yes"}).raise_for_status()
+        items = client.get(route).json()["questions"]
+        assert {q["id"] for q in items} == {"supply", "tolerance", "visit"}
+        for q in items:
+            client.post(route + "/answer", data={"qid": q["id"], "value": "no"}).raise_for_status()
+        client.post(route + "/finish?quiet=1").raise_for_status()
+        saved = client.get(f"/api/care/patients/{pid}").json()
+        questionnaire = next(x for x in saved["records"] if x["type"] == "QuestionnaireResponse")
+        assert len(questionnaire["resource"]["item"]) == 3 and questionnaire["direction"] == "out"
+        assert any(x["type"] == "Task" for x in saved["records"])
+        fresh = client.post(f"/api/patients/{pid}/calls", json={"scenario": "hiv_followup", "lang": "ru"}).json()
+        for suffix in ("dial", "sim"):
+            assert client.post(f"/api/calls/{fresh['id']}/" + suffix, json={}).json()["detail"] == "test_call_by_link"
+        with SessionLocal() as db:
+            assert db.query(carepath.DemoCase).filter_by(patient_id=pid).one()
+        ctx = saved["profile"]
+        assert client.put(f"/api/care/patients/{pid}/context", json={**ctx, "private_consent": False}).status_code == 200
+        assert client.get("/api/call/" + fresh["token"]).status_code == 410
+        pregnancy = case("homilador")
+        assert "vaccine_child" not in {x["id"] for x in pregnancy["eligible"]}
+        first = case("first_birth_care")
+        assert "first_birth_care" in {x["id"] for x in first["eligible"]} and first["profile"]["first_birth"]
+        child = case("vaccine_child")
+        order = child["vaccines"][0]
+        assert "представитель" in order["recipient"] and "представитель" not in child["name"]
+        assert "vaccine_adult" not in {x["id"] for x in child["eligible"]}
+        child_route = "/api" + order["call"]["url"]
+        assert "Нодира" in client.get(child_route).json()["hello"] or "Азимова" in client.get(child_route).json()["hello"]
+        due = carepath.add_months(date.fromisoformat(child["profile"]["birthday"]), 12).isoformat()
+        assert due == order["due"]
+        endpoint = f"/api/care/patients/{child['patient_id']}/vaccination"
+        changed = client.put(endpoint, json={"plan_id": order["id"], "name": order["name"], "due": due, "status": "given"}).json()
+        assert changed["vaccines"][0]["status"] == "given" and client.get(child_route).status_code == 410
+        assert case("vaccine_adult")["vaccines"][0]["call"]["scenario"] == "vaccine_adult"
+
+
+def test_clinical_route_schedules_next_day_and_replays_without_another_call():
+    from datetime import datetime, timedelta
+
+    with TestClient(app) as c:
+        patient = c.post("/api/care/examples/respiratory_followup").json()
+        target = f"/api/care/patients/{patient['patient_id']}"
+        assert [e["kind"] for e in patient["events"]] == ["discharge", "admission", "transport"]
+        now = datetime.now(UTC).replace(microsecond=0)
+        body = {
+            "event_id": "qa-enc-18",
+            "episode": "qa-episode",
+            "kind": "discharge",
+            "occurred_at": now.isoformat(),
+            "hospital": "Учебный стационар №2",
+            "transport": "",
+            "doctor": "Учебный врач",
+            "icd": "J18.9",
+            "reason": "Восстановление после пневмонии",
+        }
+        saved = c.post(target + "/events", json=body)
+        saved.raise_for_status()
+        first = saved.json()["events"][0]
+        assert first["call"]["scenario"] == "respiratory_followup" and first["hospital"] == body["hospital"]
+        assert datetime.fromisoformat(first["call"]["at"].replace("Z", "+00:00")) == now + timedelta(days=1)
+        again = c.post(target + "/events", json=body).json()
+        assert len(again["events"]) == 4 and again["events"][0]["call"]["url"] == first["call"]["url"]
+        assert c.post(target + "/events", json={**body, "hospital": "Другой"}).status_code == 409
+        full = c.get(f"/api/patients/{patient['patient_id']}").json()
+        assert any(s["hospital"] == body["hospital"] and s["icd10"] == "J18.9" for s in full["stays"])
+        assert any(m["payload"].get("id") == body["event_id"] for m in c.get("/api/dmed").json()["messages"])
+
+
+def test_registry_pages_use_the_same_filters_and_keep_the_legacy_list():
+    with TestClient(app) as c:
+        def page(number, **filters):
+            return c.get("/api/patients", params={"limit": 10, "page": number, **filters}).json()
+
+        legacy = c.get("/api/patients", params={"limit": 2000}).json()
+        first, second, last = page(1), page(2), page(10000)
+        assert len(legacy) == first["total"] > 10
+        assert first["items"] == legacy[:10] and second["items"] == legacy[10:20]
+        assert last["page"] == first["pages"]
+        assert last["items"] == legacy[(last["page"] - 1) * 10 :]
+        filters = {"zone": "yellow", "kind": "homilador"}
+        filtered = c.get("/api/patients", params={"limit": 2000, **filters}).json()
+        assert page(1, **filters)["total"] == len(filtered)
+        assert page(1, **filters)["items"] == filtered[:10]
+        assert page(99, q="__missing_patient__") == {"items": [], "total": 0, "page": 1, "pages": 1, "size": 10}
+
+
+def test_guided_exam_keeps_questions_out_of_extraction_and_saves_only_after_review(monkeypatch):
+    captured = []
+    original = extract.extract
+
+    def capture(text):
+        captured.append(text)
+        return original(text)
+
+    monkeypatch.setattr(extract, "extract", capture)
+    name = "Демо Анкета"
+    with TestClient(app) as client:
+        questions = client.get("/api/meta").json()["voice_questions"]
+        assert len([q for q in questions if not q.get("kind")]) == 6
+        assert all(q["ru"] and q["uz"] for q in questions)
+        answers = {"full_name": name, "birth_year": "1995", "weeks": "32", "vitals": "Давление 120/80, пульс 72", "diagnosis": "Не установлен"}
+        response = client.post("/api/voice/draft", json={"answers": answers, "kind": "homilador", "lang": "ru"})
+        response.raise_for_status()
+        draft = response.json()
+        assert captured == ["\n".join(answers.values())]
+        assert draft["answers"] == answers
+        assert all(q["ru"] not in captured[0] for q in questions)
+        assert draft["data"] == {"full_name": name, "birth_year": 1995, "weeks": 32, "kind": "homilador", "bp_sys": 120, "bp_dia": 80, "pulse": 72}
+        assert draft["quotes"]["weeks"] == "32"
+        assert "Какой сейчас срок беременности?\n32" in draft["transcript"] and "Какие жалобы есть сегодня?" not in draft["transcript"]
+        assert client.get("/api/patients", params={"q": name}).json() == []
+        assert client.post("/api/voice/draft", json={"kind": "bola", "answers": answers}).status_code == 422
+        wrong_year = client.post("/api/voice/draft", json={"answers": {"full_name": name, "plan": "Принести выписку за 1998 год"}}).json()
+        assert "birth_year" not in wrong_year["data"] and "weeks" not in wrong_year["data"]
+        assert client.post("/api/voice/draft", json={"answers": {"vitals": "120/80"}}).status_code == 422
+        assert client.post("/api/voice/draft", json={"answers": {"full_name": name, "plan": "x" * 4000}}).status_code == 422
+        confirmed = client.post("/api/patients/confirm", json={"fields": draft["data"], "quotes": draft["quotes"], "transcript": draft["transcript"]})
+        confirmed.raise_for_status()
+        assert client.get("/api/patients", params={"q": name}).json()[0]["id"] == confirmed.json()["id"]
+
+
+def test_single_answer_audio_transcribes_without_building_a_partial_card(monkeypatch):
+    from app import voicelab
+
+    monkeypatch.setattr(voicelab, "stt", lambda *args: {"text": "120/80", "language": "uz", "ms": 24})
+    extracted = []
+    monkeypatch.setattr(extract, "extract", lambda text: extracted.append(text) or {"data": {}, "quotes": {}})
+    with TestClient(app) as client:
+        files = {"audio": ("reply.webm", b"x" * 1000, "audio/webm")}
+        res = client.post("/api/voice", data={"lang": "uz", "transcript_only": "true"}, files=files)
+        assert res.json() == {"transcript": "120/80", "language": "uz", "stt_ms": 24}
+        assert extracted == []
+        assert "data" in client.post("/api/voice", data={"lang": "uz"}, files=files).json()
+        assert extracted == ["120/80"]

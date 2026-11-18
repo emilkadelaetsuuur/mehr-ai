@@ -1,0 +1,52 @@
+{
+  "id": "first_birth_care",
+  "title": {
+    "uz": "Birinchi tug‘ruqdan so‘ng",
+    "ru": "После первых родов"
+  },
+  "who": "first_birth_care",
+  "basis": "Индивидуальный план клиники / Klinikaning shaxsiy kuzatuv rejasi",
+  "greeting": {
+    "ru": "Здравствуйте. Вам звонит помощник поликлиники Mehr AI.",
+    "uz": "Assalomu alaykum. Sizga poliklinika yordamchisi Mehr AI qo‘ng‘iroq qilmoqda."
+  },
+  "intro": {
+    "ru": "Поговорим о восстановлении и уходе за ребёнком.",
+    "uz": "Tiklanish va chaqaloq parvarishi haqida gaplashamiz."
+  },
+  "questions": [
+    {
+      "id": "mother_well",
+      "ru": "Ухудшилось ли ваше самочувствие после выписки?",
+      "uz": "Shifoxonadan chiqqach ahvolingiz yomonlashdimi?",
+      "type": "yesno",
+      "flag_if": "yes",
+      "extra": "ahvol"
+    },
+    {
+      "id": "feeding",
+      "ru": "Нужна ли вам помощь медсестры с кормлением ребёнка?",
+      "uz": "Bolani ovqatlantirishda hamshira yordami kerakmi?",
+      "type": "yesno",
+      "flag_if": "yes",
+      "extra": "callback"
+    },
+    {
+      "id": "care",
+      "ru": "Хотели бы вы обсудить сон, купание или уход за пупком с патронажной медсестрой?",
+      "uz": "Uyqu, cho‘miltirish yoki kindik parvarishini patronaj hamshirasi bilan muhokama qilmoqchimisiz?",
+      "type": "yesno",
+      "flag_if": "yes",
+      "extra": "callback"
+    }
+  ],
+  "closing_ok": {
+    "ru": "Спасибо. Ответы сохранены для вашего врача.",
+    "uz": "Rahmat. Javoblaringiz shifokoringiz uchun saqlandi."
+  },
+  "closing_alert": {
+    "ru": "Клиника получила ответы. Если нужна неотложная помощь, звоните 103.",
+    "uz": "Klinika javoblaringizni oldi. Shoshilinch yordam kerak bo‘lsa, 103 ga qo‘ng‘iroq qiling."
+  }
+}
+

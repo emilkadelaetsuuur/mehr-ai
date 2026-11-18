@@ -1,0 +1,51 @@
+{
+  "id": "respiratory_followup",
+  "title": {
+    "ru": "После пневмонии",
+    "uz": "Pnevmoniyadan keyin"
+  },
+  "who": "respiratory_followup",
+  "basis": "Индивидуальный план клиники / Klinikaning shaxsiy kuzatuv rejasi",
+  "greeting": {
+    "ru": "Здравствуйте. Вам звонит помощник поликлиники Mehr AI.",
+    "uz": "Assalomu alaykum. Sizga poliklinika yordamchisi Mehr AI qo‘ng‘iroq qilmoqda."
+  },
+  "intro": {
+    "ru": "Уточним, как вы восстанавливаетесь после пневмонии.",
+    "uz": "Pnevmoniyadan keyin tiklanishingiz haqida so‘raymiz."
+  },
+  "questions": [
+    {
+      "id": "breathing",
+      "type": "yesno",
+      "ru": "Стало ли вам труднее дышать по сравнению со вчерашним днём?",
+      "uz": "Kechagiga nisbatan nafas olishingiz qiyinlashdimi?",
+      "flag_if": "yes",
+      "extra": "ahvol"
+    },
+    {
+      "id": "fever",
+      "type": "yesno",
+      "ru": "Вернулась ли температура после выписки?",
+      "uz": "Uyga qaytganingizdan beri isitma yana ko‘tarildimi?",
+      "flag_if": "yes",
+      "extra": "callback"
+    },
+    {
+      "id": "plan",
+      "type": "yesno",
+      "ru": "Удалось ли начать назначенное при выписке лечение?",
+      "uz": "Uyga yozilganda tayinlangan davolashni boshlay oldingizmi?",
+      "flag_if": "no",
+      "extra": "callback"
+    }
+  ],
+  "closing_ok": {
+    "ru": "Спасибо. Ответы сохранены для вашего врача.",
+    "uz": "Rahmat. Javoblaringiz shifokoringiz uchun saqlandi."
+  },
+  "closing_alert": {
+    "ru": "Клиника получила ответы. Если нужна неотложная помощь, звоните 103.",
+    "uz": "Klinika javoblaringizni oldi. Shoshilinch yordam kerak bo‘lsa, 103 ga qo‘ng‘iroq qiling."
+  }
+}

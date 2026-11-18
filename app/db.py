@@ -215,25 +215,16 @@ SCHEMA_VERSION = "6"
 
 
 def init_db():
-    """Create tables. The demo holds synthetic data only, so a schema change simply rebuilds it
-    (a real deployment would use Alembic migrations instead)."""
+    """Install additive tables and retain the existing registry on every startup."""
     Base.metadata.create_all(engine)
     if "private_consent_at" not in {c["name"] for c in inspect(engine).get_columns("patients")}:
-        # A column added without rebuilding the data. The synthetic patients already under dispensary follow-up
-        # are marked as having given this consent together with the general one; a real patient gives it herself.
+        # Existing clinical records require explicitly recorded consent for confidential calls.
         with engine.begin() as conn:
             conn.execute(text("ALTER TABLE patients ADD COLUMN private_consent_at TIMESTAMP"))
-        with SessionLocal() as db:
-            for p in db.query(Patient).filter(Patient.consent_at.isnot(None)):
-                if p.groups:
-                    p.private_consent_at = p.consent_at
-            db.commit()
     with SessionLocal() as db:
         row = db.get(Meta, "schema")
-        if row and row.value == SCHEMA_VERSION:
-            return
-    Base.metadata.drop_all(engine)
-    Base.metadata.create_all(engine)
-    with SessionLocal() as db:
-        db.merge(Meta(key="schema", value=SCHEMA_VERSION))
-        db.commit()
+        if row and row.value != SCHEMA_VERSION:
+            raise RuntimeError("The registry schema requires a migration before startup")
+        if not row:
+            db.add(Meta(key="schema", value=SCHEMA_VERSION))
+            db.commit()

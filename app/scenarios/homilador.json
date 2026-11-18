@@ -6,8 +6,8 @@
  "who": "homilador",
  "basis": "Homiladorlikdagi xavf belgilari (JSST antenatal parvarish tavsiyalari); savollarni shifokor tasdiqlaydi",
  "greeting": {
-  "uz": "Assalomu alaykum! Men Nigoh — poliklinikaning sun'iy intellekt yordamchisiman. Sog'lig'ingiz haqida beshta qisqa savol beraman. Har bir savolga «ha» yoki «yo'q» deb javob bering.",
-  "ru": "Здравствуйте! Я Nigoh — помощник поликлиники на основе искусственного интеллекта. Задам пять коротких вопросов о вашем самочувствии. Отвечайте «да» или «нет»."
+  "uz": "Assalomu alaykum! Men Mehr AI — poliklinikaning sun'iy intellekt yordamchisiman. Sog'lig'ingiz haqida beshta qisqa savol beraman. Har bir savolga «ha» yoki «yo'q» deb javob bering.",
+  "ru": "Здравствуйте! Я Mehr AI — помощник поликлиники на основе искусственного интеллекта. Задам пять коротких вопросов о вашем самочувствии. Отвечайте «да» или «нет»."
  },
  "intro": {
   "uz": "Sog'lig'ingiz haqida beshta qisqa savol beraman. Har bir savolga «ha» yoki «yo'q» deb javob bering.",

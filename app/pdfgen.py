@@ -28,13 +28,14 @@ def referral(p, lang="uz", to=""):
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A5)
     W, H = A5
-    c.setFillColor(HexColor("#0b3f3c"))
+    c.setFillColor(HexColor("#03045e"))
     c.rect(0, H - 62, W, 62, stroke=0, fill=1)
     c.setFillColor(HexColor("#ffffff"))
     c.setFont(B, 15)
     c.drawString(24, H - 30, "YO'LLANMA" if uz else "НАПРАВЛЕНИЕ")
     c.setFont(R, 8)
-    c.drawString(24, H - 46, f"Nigoh · {config.DISTRICT} · {datetime.utcnow():%d.%m.%Y}")
+    header = ("Mehr AI", config.DISTRICT, datetime.utcnow().strftime("%d.%m.%Y"))
+    c.drawString(24, H - 46, " · ".join(part for part in header if part))
     c.drawRightString(W - 24, H - 30, f"№ {p.id:05d}")
     y = H - 86
 
@@ -95,10 +96,10 @@ def referral(p, lang="uz", to=""):
     c.setFillColor(HexColor("#5b6675"))
     c.setFont(R, 7)
     foot = (
-        "Hujjat Nigoh tizimida tasdiqlangan karta asosida tuzildi. Zona klinik protokol qoidalari bo'yicha hisoblangan; "
+        "Hujjat Mehr AI tizimida tasdiqlangan karta asosida tuzildi. Zona klinik protokol qoidalari bo'yicha hisoblangan; "
         "qarorni shifokor qabul qiladi. Namuna shakl."
         if uz
-        else "Документ сформирован в системе Nigoh по подтверждённой карточке. Зона рассчитана по правилам протокола; решение принимает врач. Образец формы."
+        else "Документ сформирован в системе Mehr AI по подтверждённой карточке. Зона рассчитана по правилам протокола; решение принимает врач. Образец формы."
     )
     c.drawString(24, 40, foot[:118])
     c.drawString(24, 30, foot[118:236])

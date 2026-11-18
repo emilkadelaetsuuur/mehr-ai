@@ -7,7 +7,7 @@ wait for next. Speech recognition is slow work, so it runs off the event loop.
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.concurrency import run_in_threadpool
 
-from .. import config, core, telephony
+from .. import carepath, config, core, telephony
 from .deps import db_session
 from .public import get_call
 
@@ -35,6 +35,8 @@ def _question(call, i):
 async def step(token: str, request: Request, i: int = 0, db=Depends(db_session)):
     await _form(request)
     c = get_call(db, token)
+    if carepath.test_line(db,c):
+        return _xml(telephony._reply(telephony.HANGUP))
     return _xml(telephony.step_twiml(c, i) if _question(c, i) else telephony._reply(telephony.HANGUP))
 
 
@@ -43,6 +45,8 @@ async def answer(token: str, request: Request, i: int = 0, db=Depends(db_session
     """A spoken answer to question i."""
     form = await _form(request)
     c = get_call(db, token)
+    if carepath.test_line(db,c):
+        return _xml(telephony._reply(telephony.HANGUP))
     if not _question(c, i):
         return _xml(telephony._reply(telephony.HANGUP))
     return _xml(await run_in_threadpool(telephony.take_answer, db, c, i, form.get("RecordingUrl", "")))
@@ -53,6 +57,8 @@ async def key(token: str, request: Request, i: int = 0, db=Depends(db_session)):
     """The second try at question i, answered with a key: 1 yes, 2 no, 0 a person."""
     form = await _form(request)
     c = get_call(db, token)
+    if carepath.test_line(db,c):
+        return _xml(telephony._reply(telephony.HANGUP))
     if not _question(c, i):
         return _xml(telephony._reply(telephony.HANGUP))
     return _xml(await run_in_threadpool(telephony.take_answer, db, c, i, "", form.get("Digits", "")))
@@ -63,6 +69,8 @@ async def offered(token: str, request: Request, db=Depends(db_session)):
     """Her answer to the offer to leave a message for the doctor."""
     form = await _form(request)
     c = get_call(db, token)
+    if carepath.test_line(db,c):
+        return _xml(telephony._reply(telephony.HANGUP))
     if c.status in OVER:
         return _xml(telephony._reply(telephony.HANGUP))
     return _xml(await run_in_threadpool(telephony.take_offer, db, c, form.get("RecordingUrl", ""), form.get("Digits")))
@@ -73,6 +81,8 @@ async def message(token: str, request: Request, db=Depends(db_session)):
     """The message she spoke after the tone."""
     form = await _form(request)
     c = get_call(db, token)
+    if carepath.test_line(db,c):
+        return _xml(telephony._reply(telephony.HANGUP))
     if c.status in OVER:
         return _xml(telephony._reply(telephony.HANGUP))
     return _xml(await run_in_threadpool(telephony.take_message, db, c, form.get("RecordingUrl", "")))
@@ -82,6 +92,8 @@ async def message(token: str, request: Request, db=Depends(db_session)):
 async def closing_words(token: str, request: Request, db=Depends(db_session)):
     await _form(request)
     c = get_call(db, token)
+    if carepath.test_line(db,c):
+        return _xml(telephony._reply(telephony.HANGUP))
     return _xml(await run_in_threadpool(telephony.closing_twiml, c))
 
 
@@ -89,6 +101,8 @@ async def closing_words(token: str, request: Request, db=Depends(db_session)):
 async def status(token: str, request: Request, db=Depends(db_session)):
     form = await _form(request)
     c = get_call(db, token)
+    if carepath.test_line(db,c):
+        return _xml(telephony._reply(telephony.HANGUP))
     state = form.get("CallStatus")
     if state in ("no-answer", "busy", "failed", "canceled") and c.status not in OVER:
         core.call_no_answer(db, c)

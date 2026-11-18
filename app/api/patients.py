@@ -2,15 +2,26 @@
 
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
 from sqlalchemy.orm import selectinload
 
 from .. import config, core, dmed, fhir, ml, pdfgen, rules, vaccines
 from ..db import AuditLog, DmedMessage, Hospitalization, Patient
 from ..schemas import CallIn, ConfirmIn, NoteIn, ObservationIn
+from .care import access
 from .deps import brief, call_json, current_user, db_session, get_patient, iso, masked, sees_all, snapshot, task_json
 
-router = APIRouter(prefix="/api/patients")
+
+def card_access(request: Request, db=Depends(db_session), u=Depends(current_user)):
+    pid = request.path_params.get("pid")
+    if pid and str(pid).isdigit():
+        patient=get_patient(db,int(pid))
+        access(db,patient,u)
+        if (request.url.path.endswith(("/fhir","/referral.pdf")) or request.method!="GET") and masked(patient,u):
+            raise HTTPException(403,"role")
+
+
+router = APIRouter(prefix="/api/patients", dependencies=[Depends(card_access)])
 
 
 @router.get("")
@@ -23,6 +34,7 @@ def list_patients(
     vax: int = 0,
     hospital: int = 0,
     limit: int = 400,
+    page: int | None = Query(None, ge=1),
     db=Depends(db_session),
     u=Depends(current_user),
 ):
@@ -50,13 +62,26 @@ def list_patients(
             rows = [p for p in rows if behind.get(p.id)]
         if hospital:
             rows = [p for p in rows if p.id in inside]
-        rows.sort(key=lambda p: (-rules.ORDER.get(p.zone or "green", 0), p.last_contact_at or core.now()))
-        return [
+        as_of = core.now()
+        rows.sort(key=lambda p: (-rules.ORDER.get(p.zone or "green", 0), p.last_contact_at or as_of, p.id))
+        total = len(rows)
+        if page is None:
+            selected = rows[:limit]
+        else:
+            size = max(1, min(limit, 100))
+            pages = max(1, (total + size - 1) // size)
+            current = min(page, pages)
+            offset = (current - 1) * size
+            selected = rows[offset : offset + size]
+        items = [
             {**brief(p, u), "in_hospital": p.id in inside, "vax": ("overdue" if behind[p.id]["overdue"] else "due") if behind.get(p.id) else None}
-            for p in rows[:limit]
+            for p in selected
         ]
+        if page is None:
+            return items
+        return {"items": items, "total": total, "page": current, "pages": pages, "size": size}
 
-    return snapshot(("patients", zone, q, kind, silent, group, vax, hospital, limit, u.role, u.doctor_name), build)
+    return snapshot(("patients", zone, q, kind, silent, group, vax, hospital, limit, page, u.role, u.doctor_name), build)
 
 
 @router.post("/confirm")
@@ -69,6 +94,8 @@ def confirm(body: ConfirmIn, db=Depends(db_session), u=Depends(current_user)):
         if f.birth_year:
             qs = qs.filter(Patient.birth_year == f.birth_year)
         p = qs.first()
+    if p is not None:
+        access(db, p, u)
     created = p is None
     if created:
         p = Patient(full_name=f.full_name.strip(), kind=f.kind or "boshqa", zone="green", created_at=core.now(), last_contact_at=core.now())
@@ -174,8 +201,6 @@ def add_result(pid: int, body: ObservationIn, db=Depends(db_session), u=Depends(
 def discharge(pid: int, body: NoteIn = NoteIn(), db=Depends(db_session), u=Depends(current_user)):
     p = get_patient(db, pid)
     t = core.discharge(db, p, body.note)
-    for k in db.query(Patient).filter(Patient.mother_id == p.id).all():  # the newborn goes home too
-        core.discharge(db, k)
     core.audit(db, u, "discharged", p, "Faol chaqiruv ochildi")
     db.commit()
     return task_json(t)
@@ -213,12 +238,16 @@ def new_call(pid: int, body: CallIn, db=Depends(db_session), u=Depends(current_u
     p = get_patient(db, pid)
     if body.scenario not in core.SCENARIOS:
         raise HTTPException(400, "scenario")
+    if body.scenario == "dispanser" and masked(p, u):
+        raise HTTPException(403, "role")
     if not core.fits(p, body.scenario):  # every scenario is for the people it was written for, and nobody else
         raise HTTPException(409, "scenario does not fit this patient")
     if body.lang:
         p.lang = body.lang
     try:
         c = core.create_call(db, p, body.scenario)
+    except core.IneligibleScenario:
+        raise HTTPException(409, "ineligible_scenario")
     except core.ConsentRequired:
         raise HTTPException(409, "consent")
     core.audit(db, u, "call_created", p, body.scenario)

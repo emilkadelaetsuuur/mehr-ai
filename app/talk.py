@@ -19,7 +19,7 @@ import json
 import os
 import re
 
-from . import closing, core, extract, vaccines, voicelab
+from . import carepath, closing, core, extract, vaccines, voicelab
 from .db import Patient
 
 HERE = os.path.dirname(__file__)
@@ -30,8 +30,8 @@ NO_ANSWER = "TOPILMADI"  # the model's word for "the leaflet does not answer thi
 MAX_QUESTIONS = 3  # her own questions in one call; the page counts them too
 
 HELLO = {
-    "uz": "Assalomu alaykum! Sizga poliklinikadan Nigoh — sun'iy intellekt yordamchisi qo'ng'iroq qilyapti. {ask}",
-    "ru": "Здравствуйте! Вам звонит Nigoh — помощник поликлиники на основе искусственного интеллекта. {ask}",
+    "uz": "Assalomu alaykum! Sizga poliklinikadan Mehr AI — sun'iy intellekt yordamchisi qo'ng'iroq qilyapti. {ask}",
+    "ru": "Здравствуйте! Вам звонит Mehr AI — помощник поликлиники на основе искусственного интеллекта. {ask}",
 }
 IS_IT_YOU = {"uz": "Men {name} bilan gaplashyapmanmi?", "ru": "Скажите, пожалуйста, вы — {name}?"}
 IS_IT_YOUR_CHILD = {"uz": "{name} — sizning farzandingizmi?", "ru": "Скажите, пожалуйста, ваш ребёнок — {name}?"}
@@ -57,7 +57,7 @@ PERSON = {
 # What a first-time mother is offered to hear after the questions: the offer and the leaflet notes read to her.
 TIPS = {"homilador": ("tips_q_preg", ["xavf_homila", "ovqat", "korik"]), "ona": ("tips_q_baby", ["emizish", "kindik", "uyqu", "xavf_chaqaloq"])}
 
-SYSTEM = """You are the voice of Nigoh, the AI assistant of a district polyclinic in Uzbekistan, in a follow-up \
+SYSTEM = """You are the voice of Mehr AI, the AI assistant of a district polyclinic in Uzbekistan, in a follow-up \
 phone call with {person}. She has just asked a question in her own words. Your reply is turned into speech \
 and played to her while she waits on the line.
 
@@ -125,13 +125,13 @@ def cyrillic(name):
 def spoken(full_name, lang):
     """A name as it is said aloud: the given name first, in the letters the voice reads.
     Cards hold the family name first: "Sodiqova Dilnoza" is greeted as "Dilnoza Sodiqova"."""
-    parts = (full_name or "").split()
+    parts = (full_name or "").rsplit(" · ", 1)[-1].split()
     said = f"{parts[1]} {parts[0]}" if len(parts) > 1 else " ".join(parts)
     return cyrillic(said) if lang == "ru" else said
 
 
 def given(full_name, lang):
-    parts = (full_name or "").split()
+    parts = (full_name or "").rsplit(" · ", 1)[-1].split()
     name = parts[1] if len(parts) > 1 else "".join(parts[:1])
     return cyrillic(name) if lang == "ru" else name
 
@@ -142,7 +142,10 @@ def opening(db, call):
     p, lang = call.patient, call.lang if call.lang in ("uz", "ru") else "uz"
     child = p.kind in vaccines.CHILD
     mother = db.get(Patient, p.mother_id) if child and p.mother_id else None
-    if child and not mother:
+    if call.scenario in carepath.IMMUNIZATION:
+        who = carepath.call_recipient(db, call) or p
+        ask, name = IS_IT_YOU[lang].format(name=spoken(who.full_name, lang)), given(who.full_name, lang)
+    elif child and not mother:
         ask, name = IS_IT_YOUR_CHILD[lang].format(name=spoken(p.full_name, lang)), ""
     else:
         who = mother or p
@@ -154,12 +157,22 @@ def opening(db, call):
     context = call.context or {}
     about = vaccines.sentence(context, lang, given(p.full_name, lang) if lang == "uz" else "") if context.get("doses") else ""
     about = about or (AFTER_HOSPITAL[lang] if context.get("hospital") else "")
-    return HELLO[lang].format(ask=ask), " ".join(x for x in (thanks, about, core.SCENARIOS[call.scenario]["intro"][lang], YOUR_TURN[lang]) if x)
+    intro = core.SCENARIOS[call.scenario]["intro"][lang]
+    if call.scenario in carepath.IMMUNIZATION:
+        plan = carepath.pending_plan(db, p, call.scenario, call)
+        if plan:
+            label = "Запланировано" if lang == "ru" else "Rejada"
+            intro += f" {label}: {plan.name}, {plan.due:%d.%m.%Y}."
+    return HELLO[lang].format(ask=ask), " ".join(x for x in (thanks, about, intro, YOUR_TURN[lang]) if x)
 
 
 def topic(call):
     """Whose leaflet a call's answers come from: the kind of patient, or what the scenario is about."""
     who = core.SCENARIOS[call.scenario].get("who")
+    if call.scenario in carepath.PRIVATE:
+        return "dispanser"
+    if call.scenario in carepath.IMMUNIZATION:
+        return "bola" if call.scenario == "vaccine_child" else "boshqa"
     return "dispanser" if who == "dispanser" else "bola" if who == "emlash" else call.patient.kind
 
 
@@ -173,7 +186,7 @@ def ask_key(call):
 
 def needs_year(call):
     """A call about dispensary follow-up asks the year of birth after the name: a second key before anything is said."""
-    return bool(core.SCENARIOS[call.scenario].get("private") and call.patient.birth_year)
+    return bool((core.SCENARIOS[call.scenario].get("private") or call.scenario in carepath.PRIVATE) and call.patient.birth_year)
 
 
 def year_matches(said, year):
@@ -198,6 +211,8 @@ def tips(db, call):
     """For a first-time mother: (the offer's phrase, the leaflet notes that are read to her), else None."""
     p, who = call.patient, core.SCENARIOS[call.scenario].get("who")
     mother = db.get(Patient, p.mother_id) if p.kind in vaccines.CHILD and p.mother_id else p
+    if call.scenario == "first_birth_care":
+        who = "tuqqan"
     if who not in ("homilador", "tuqqan", "chaqaloq") or not mother or mother.parity != 0:
         return None
     offer, ids = TIPS["homilador" if who == "homilador" else "ona"]

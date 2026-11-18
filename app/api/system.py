@@ -11,7 +11,7 @@ import qrcode.image.svg
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import event
 
-from .. import auth, closing, config, core, dmed, ml, rules, seed, simline, telegram, telephony, vaccines, voicelab
+from .. import auth, closing, config, core, dmed, ml, rules, seed, simline, telegram, telephony, vaccines, voiceguide, voicelab
 from ..db import AuditLog, Hospitalization, Notice, Patient, SessionLocal, User
 from ..schemas import LabImportIn, LoginIn, PasswordIn
 from .deps import brief, current_user, db_session, iso, masked, require, snapshot
@@ -98,6 +98,7 @@ def meta(db=Depends(db_session)):
         "district": config.DISTRICT,
         "auth": bool(config.DEMO_PASSWORD),
         "voicelab": voicelab.status(),
+        "voice_questions": voiceguide.QUESTIONS,
         "telephony": telephony.enabled(),
         "sim": simline.enabled(),  # a phone with a SIM card can stand in as the telephone line
         "sim_online": simline.online(),
@@ -164,6 +165,11 @@ def audit_log(patient_id: int = 0, db=Depends(db_session), u=Depends(current_use
         raise HTTPException(403, "role")
     q = db.query(AuditLog)
     if patient_id:
+        from .care import access
+
+        person = db.get(Patient, patient_id)
+        if person:
+            access(db, person, u)
         q = q.filter(AuditLog.patient_id == patient_id)
     return [
         {"at": iso(a.at), "role": a.role, "actor": a.actor, "action": a.action, "patient_id": a.patient_id, "detail": a.detail}

@@ -1,0 +1,52 @@
+{
+  "id": "hiv_followup",
+  "title": {
+    "uz": "OIV bo‘yicha kuzatuv",
+    "ru": "Сопровождение при ВИЧ"
+  },
+  "who": "hiv_followup",
+  "basis": "Индивидуальный план клиники / Klinikaning shaxsiy kuzatuv rejasi",
+  "greeting": {
+    "ru": "Здравствуйте. Вам звонит помощник поликлиники Mehr AI.",
+    "uz": "Assalomu alaykum. Sizga poliklinika yordamchisi Mehr AI qo‘ng‘iroq qilmoqda."
+  },
+  "intro": {
+    "ru": "Уточним, нужна ли вам помощь с назначенным лечением и наблюдением.",
+    "uz": "Tayinlangan davolash va kuzatuv uchun yordam kerakligini aniqlaymiz."
+  },
+  "questions": [
+    {
+      "id": "supply",
+      "ru": "Хватит ли назначенной антиретровирусной терапии до следующего визита?",
+      "uz": "Keyingi qabulgacha belgilangan antiretrovirus dorilaringiz yetarlimi?",
+      "type": "yesno",
+      "flag_if": "no",
+      "extra": "callback"
+    },
+    {
+      "id": "tolerance",
+      "ru": "Появились ли трудности с приёмом или переносимостью назначенных лекарств?",
+      "uz": "Belgilangan dorilarni qabul qilishda yoki ko‘tarishda qiyinchilik bo‘ldimi?",
+      "type": "yesno",
+      "flag_if": "yes",
+      "extra": "callback"
+    },
+    {
+      "id": "visit",
+      "ru": "Нужна ли помощь с записью на контрольный анализ или приём?",
+      "uz": "Nazorat tahlili yoki qabulga yozilish uchun yordam kerakmi?",
+      "type": "yesno",
+      "flag_if": "yes",
+      "extra": "callback"
+    }
+  ],
+  "closing_ok": {
+    "ru": "Спасибо. Ответы сохранены для вашего врача.",
+    "uz": "Rahmat. Javoblaringiz shifokoringiz uchun saqlandi."
+  },
+  "closing_alert": {
+    "ru": "Клиника получила ответы. Если нужна неотложная помощь, звоните 103.",
+    "uz": "Klinika javoblaringizni oldi. Shoshilinch yordam kerak bo‘lsa, 103 ga qo‘ng‘iroq qiling."
+  }
+}
+
