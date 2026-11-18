@@ -30,6 +30,10 @@ TWILIO_FROM = os.getenv("TWILIO_FROM", "").strip()
 TWILIO_API = os.getenv("TWILIO_API", "https://api.twilio.com").rstrip("/")
 SESSION_DAYS = 14
 
+# The polyclinic's own number, shown to a caller who asks for a person (optional).
+CLINIC_PHONE = os.getenv("CLINIC_PHONE", "").strip()
+APPEAL_HOURS = int(os.getenv("APPEAL_HOURS") or "24")  # time to answer a patient's message
+
 # Claude words the closing of a call (optional). The key itself is read by the SDK from ANTHROPIC_API_KEY.
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "").strip() or "claude-opus-5-5"
 CLAUDE_TIMEOUT = float(os.getenv("CLAUDE_TIMEOUT") or "6")  # seconds a caller may wait for Claude before the other writer's text is used

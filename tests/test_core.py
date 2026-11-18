@@ -243,6 +243,85 @@ def test_closing_words_come_from_claude_only_when_they_pass_the_checks(monkeypat
         assert any(t["type"] == "mutaxassis" and t["status"] == "ochiq" for t in c.get(f"/api/patients/{p['id']}").json()["tasks"])
 
 
+def test_a_message_goes_to_the_person_the_patient_is_attached_to():
+    """At the end of a call the patient may leave a message. It becomes a task with a deadline for the family
+    doctor named on the card (the nurse when there is none); warning signs in it go the usual red-zone road."""
+    from app import extract
+
+    assert (
+        extract.wants_human("Operator bilan gaplashmoqchiman")
+        and extract.wants_human("позовите оператора")
+        and not extract.wants_human("Yo'q, bosh og'rimayapti")
+    )
+    with TestClient(app) as c:
+        doctor, nurse = {"X-Role": "shifokor"}, {"X-Role": "hamshira"}  # the demo family doctor is Qosimova D.
+
+        def patient(name, **extra):
+            return c.post(
+                "/api/patients/confirm", json={"fields": {"full_name": name, "birth_year": 1997, "kind": "homilador", **extra}, "consent": True}
+            ).json()
+
+        def call(p):
+            return c.post(f"/api/patients/{p['id']}/calls", json={"scenario": "homilador"}).json()
+
+        def tasks(headers, pid, kind):
+            return [t for t in c.get("/api/tasks", headers=headers).json() if t["patient"]["id"] == pid and t["type"] == kind]
+
+        mine, orphan = patient("Murojaat Sinov", doctor="Qosimova D."), patient("Shifokorsiz Sinov")
+        k = call(mine)
+        said = "Kechqurun oyoqlarim og'riyapti, qachon qabulga kelsam bo'ladi?"
+        r = c.post(f"/api/call/{k['token']}/appeal", data={"text": said}).json()
+        assert r["ok"] and r["to"] == "shifokor" and r["doctor"] == "Qosimova D." and not r["urgent"]
+        (t,) = tasks(doctor, mine["id"], "murojaat")  # her own doctor sees it, with a deadline
+        assert t["status"] == "ochiq" and t["reason"] == said and not tasks(nurse, mine["id"], "murojaat")
+        res = c.post(f"/api/call/{k['token']}/finish").json()
+        assert not res["alert"] and "murojaat" in res["flags"]
+        card = c.get(f"/api/patients/{mine['id']}").json()
+        assert card["zone"] == "green" and any(o["source"] == "murojaat" and o["text"] == said for o in card["observations"])
+        assert c.post(f"/api/tasks/{t['id']}/done", json={"note": "Qo'ng'iroq qildim"}, headers=doctor).status_code == 200
+
+        k = call(orphan)  # no doctor on the card: the patronage nurse
+        assert c.post(f"/api/call/{k['token']}/appeal", data={"text": "Dori qachon tugashini bilmoqchi edim."}).json()["to"] == "hamshira"
+        assert tasks(nurse, orphan["id"], "murojaat") and c.post(f"/api/call/{k['token']}/appeal", data={"text": " "}).json() == {"ok": False}
+
+        k = call(mine)  # a warning sign inside the message: red zone and the specialist, whoever she is attached to
+        r = c.post(f"/api/call/{k['token']}/appeal", data={"text": "Bugun ertalabdan qon ketyapti, qo'rqyapman."}).json()
+        assert r["urgent"] and r["to"] == "shifokor"
+        for q in c.get(f"/api/call/{k['token']}").json()["questions"]:
+            c.post(f"/api/call/{k['token']}/answer", data={"qid": q["id"], "value": "no"})
+        res = c.post(f"/api/call/{k['token']}/finish").json()
+        assert res["alert"] and res["zone"] == "red" and "qon_ketish" in res["flags"]
+        assert tasks({"X-Role": "mutaxassis"}, mine["id"], "mutaxassis")
+        assert c.post(f"/api/call/{k['token']}/appeal", data={"text": "yana bir gap"}).status_code == 400  # the call is over
+
+
+def test_a_caller_can_ask_for_a_person():
+    """Asking for an operator ends the questions: staff get a task to ring back within the promised time;
+    the nurse for an ordinary patient, the specialist for one in the red zone."""
+    from app import dialogue
+
+    with TestClient(app) as c:
+        p = c.post("/api/patients/confirm", json={"fields": {"full_name": "Operator Sinov", "birth_year": 1999, "kind": "homilador"}, "consent": True}).json()
+
+        def ask_for_person():
+            k = c.post(f"/api/patients/{p['id']}/calls", json={"scenario": "homilador"}).json()
+            first = c.get(f"/api/call/{k['token']}").json()
+            assert first["say"]["operator_ok"] and first["say"]["appeal_q"]
+            c.post(f"/api/call/{k['token']}/answer", data={"qid": first["questions"][0]["id"], "value": "no"})
+            r = c.post(f"/api/call/{k['token']}/operator", data={"said": "Operator bilan gaplashmoqchiman"}).json()
+            res = c.post(f"/api/call/{k['token']}/finish?quiet=1").json()  # answers so far are kept, no closing is composed
+            return r, res
+
+        r, res = ask_for_person()
+        assert r["ok"] and r["role"] == "hamshira" and r["minutes"] == dialogue.CALLBACK_MINUTES == 30
+        assert "operator" in res["flags"] and res["closing_parts"] is None
+        (t,) = [x for x in c.get("/api/tasks", headers={"X-Role": "hamshira"}).json() if x["patient"]["id"] == p["id"]]
+        assert t["type"] == "qayta_qongiroq" and t["status"] == "ochiq"
+        c.post(f"/api/patients/{p['id']}/observations", json={"bp_sys": 172, "bp_dia": 114})  # she is in the red zone now
+        r, _ = ask_for_person()
+        assert r["role"] == "mutaxassis"
+
+
 def test_closing_writer_follows_the_language_setting(monkeypatch):
     """Claude writes only in the languages it is set for; elsewhere, and when Claude gives nothing, the VoiceLab
     model writes; if neither gives an acceptable phrase, the fixed one is spoken."""

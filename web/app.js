@@ -278,7 +278,7 @@
     const m = S.meta.complaints[c];
     return m
       ? L(m)
-      : { unclear: t("unclear"), tashrif_tasdiqlanmadi: t("s_nomuvofiq"), noanswer: t("c_javobsiz"), ahvol: t("f_ahvol"), dori: t("f_dori"), fikr: t("f_fikr") }[
+      : { unclear: t("unclear"), tashrif_tasdiqlanmadi: t("s_nomuvofiq"), noanswer: t("c_javobsiz"), ahvol: t("f_ahvol"), dori: t("f_dori"), fikr: t("f_fikr"), murojaat: t("f_murojaat"), operator: t("f_operator") }[
           c
         ] || c;
   };

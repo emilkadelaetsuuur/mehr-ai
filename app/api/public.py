@@ -3,12 +3,13 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 
-from .. import closing, core, extract, voicelab
+from .. import closing, config, core, dialogue, extract, voicelab
 from ..db import Call
 from .deps import db_session
 
 router = APIRouter(prefix="/api/call")
 MAX_ANSWER = 3 * 1024 * 1024
+MAX_APPEAL = 8 * 1024 * 1024
 BUTTON = {"yes": "ha (tugma)", "no": "yo'q (tugma)"}
 
 
@@ -40,6 +41,8 @@ def info(token: str, db=Depends(db_session)):
         "closing_alert": sc["closing_alert"][lang],
         # spoken while the closing is being written; absent when the fixed phrase is used and nothing has to be waited for
         "bridge": closing.BRIDGE.get(lang) if closing.writers(lang) else None,
+        "say": dialogue.say(lang),  # reactions, the message for the doctor, the hand-over to a person
+        "clinic_phone": config.CLINIC_PHONE or None,
         "tts": voicelab.enabled(),
     }
 
@@ -51,6 +54,8 @@ def audio(token: str, part: str, i: int | None = None, db=Depends(db_session)):
     lang = c.lang or "uz"
     if part == "bridge":
         text = closing.BRIDGE.get(lang)
+    elif part.startswith("say_"):
+        text = (dialogue.SAY.get(part[4:]) or {}).get(lang)
     elif part == "closing" and i is not None:
         parts = closing.sentences(c.closing)
         text = parts[i] if 0 <= i < len(parts) else None
@@ -94,16 +99,72 @@ async def answer(token: str, qid: str = Form(...), value: str = Form(""), audio:
     c.answers = {**(c.answers or {}), qid: {"value": val, "transcript": transcript}}
     c.status = "jarayonda"
     db.commit()
-    return {"qid": qid, "value": val, "transcript": transcript}
+    # "operator" in a spoken answer is a request for a person, not an answer to the question
+    return {
+        "qid": qid,
+        "value": val,
+        "transcript": transcript,
+        "flagged": bool(q.get("complaint")) and val == q.get("flag_if"),  # the page reacts differently to a warning sign
+        "operator": audio is not None and extract.wants_human(transcript),
+    }
+
+
+@router.post("/{token}/hear")
+async def hear(token: str, audio: UploadFile = File(...), db=Depends(db_session)):
+    """A spoken yes or no to a question that is not part of the scenario (the offer to leave a message). Nothing is stored."""
+    c = get_call(db, token)
+    raw = await audio.read()
+    if len(raw) > MAX_ANSWER:
+        raise HTTPException(400, "audio size")
+    lang = c.lang or "uz"
+
+    def recognise():
+        text = ((voicelab.stt(raw, audio.filename or "a.webm", audio.content_type or "audio/webm", lang) or {}).get("text") or "") if len(raw) > 800 else ""
+        return text, (extract.yes_no(text, dialogue.SAY["appeal_q"][lang]) if text else "unclear")
+
+    text, val = await run_in_threadpool(recognise)
+    return {"value": val, "transcript": text, "operator": extract.wants_human(text)}
+
+
+@router.post("/{token}/appeal")
+async def appeal(token: str, text: str = Form(""), audio: UploadFile = File(None), db=Depends(db_session)):
+    """The patient's own message at the end of a call: spoken (recognised, the recording is not kept) or typed."""
+    c = get_call(db, token)
+    if c.status in ("tugadi", "javobsiz"):
+        raise HTTPException(400, "call")
+    said = text.strip()[:2000]
+    if audio is not None:
+        raw = await audio.read()
+        if len(raw) > MAX_APPEAL:
+            raise HTTPException(400, "audio size")
+        res = await run_in_threadpool(voicelab.stt, raw, audio.filename or "a.webm", audio.content_type or "audio/webm", c.lang or "uz")
+        said = ((res or {}).get("text") or "").strip()[:2000]
+    if len(said) < 3:
+        return {"ok": False}
+    out = await run_in_threadpool(core.appeal, db, c, said)
+    db.commit()
+    return {"ok": True, "transcript": said, "to": out["role"], "doctor": out["doctor"], "urgent": out["urgent"]}
+
+
+@router.post("/{token}/operator")
+def operator(token: str, said: str = Form(""), db=Depends(db_session)):
+    """The caller asked for a person: a member of staff gets a task to ring back."""
+    c = get_call(db, token)
+    if c.status in ("tugadi", "javobsiz"):
+        raise HTTPException(400, "call")
+    t = core.callback(db, c, said.strip()[:200])
+    db.commit()
+    return {"ok": True, "minutes": dialogue.CALLBACK_MINUTES, "role": t.role, "phone": config.CLINIC_PHONE or None}
 
 
 @router.post("/{token}/finish")
-def finish(token: str, db=Depends(db_session)):
+def finish(token: str, quiet: int = 0, db=Depends(db_session)):
     c = get_call(db, token)
     if c.status == "tugadi":
         return {"alert": False, "done": True, "closing": c.closing}
     res = core.finish_call(db, c)
-    c.closing, c.closing_by = closing.compose(c, res)  # a language model's wording when available, else the scenario's phrase
+    # a language model's wording when available, else the scenario's phrase; `quiet` is a call that ended with a hand-over to a person
+    c.closing, c.closing_by = (closing.fixed(c, res), "shablon") if quiet else closing.compose(c, res)
     core.audit(db, "bemor", "call_finished", c.patient, f"{c.scenario}: {', '.join(c.flags) or 'belgi yo`q'}")
     db.commit()
     # A written closing is spoken sentence by sentence; the fixed phrase is one clip that is already cached.

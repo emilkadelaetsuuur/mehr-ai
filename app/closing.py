@@ -106,6 +106,8 @@ def brief(call, res):
         "visit_confirmed": "her confirmation was recorded and passed to the head of the polyclinic",
         "visit_disputed": "the head of the polyclinic was told that she says nobody came, although the visit was marked as done",
     }[kind]
+    if (call.answers or {}).get("murojaat"):
+        done += "; the message she left at the end of this call was passed to the person she is attached to"
     lines += [f"Warning signs found by the rules: {', '.join(signs) or 'none'}", f"Outcome: {kind}", f"What the system has done: {done}"]
     return "\n".join(lines)
 

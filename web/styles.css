@@ -57,3 +57,5 @@ textarea{min-height:84px;resize:vertical}label{font-size:12.5px;color:var(--mute
 .heard{font-size:14px;opacity:.9;min-height:20px}.ai-note{font-size:12px;opacity:.7}
 .login{max-width:380px;margin:60px auto}.pwrow{display:flex;gap:8px;align-items:stretch}.pwrow input{flex:1;min-width:0}.pwrow .btn{white-space:nowrap}
 .err{color:var(--red);font-weight:600;margin:10px 0 0}.err[hidden]{display:none}
+.oper{display:inline-block;margin-top:18px;border:1px solid rgba(255,255,255,.45);background:transparent;color:#fff;border-radius:999px;padding:9px 16px;font-size:14px;text-decoration:none}
+.call textarea{width:min(92vw,420px);border-radius:14px;padding:12px;font-size:16px;border:0}

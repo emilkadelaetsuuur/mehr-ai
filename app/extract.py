@@ -232,6 +232,27 @@ def yes_no(text, question=""):
     return "no" if no else ("yes" if yes else "unclear")
 
 
+HUMAN = [
+    "operator",
+    "оператор",
+    "odam bilan gaplash",
+    "jonli xodim",
+    "xodim bilan gaplash",
+    "shifokor bilan gaplash",
+    "doktor bilan gaplash",
+    "hamshira bilan gaplash",
+    "поговорить с",
+    "позовите",
+    "соедините",
+]
+
+
+def wants_human(text):
+    """True when the caller asks for a person instead of answering the question."""
+    low = " " + _norm(text) + " "
+    return any(_norm(w) in low for w in HUMAN)
+
+
 def number(text):
     """First number in a spoken answer (digits); LLM converts spelled numbers."""
     m = re.search(r"\d{1,3}(?:[.,]\d)?", text or "")

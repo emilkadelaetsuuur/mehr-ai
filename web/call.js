@@ -25,6 +25,15 @@
       send: "Yuborish",
       proc: "Javoblar qayta ishlanmoqda…",
       again: "Qayta qo'ng'iroq",
+      oper: "Operator bilan gaplashish",
+      oper_h: "So'rovingiz qabul qilindi",
+      call_now: "Hozir qo'ng'iroq qilish:",
+      msg_h: "Shifokorga murojaat",
+      speak: "Murojaatingizni ayting",
+      finish: "Tugatdim",
+      type_here: "Murojaatingizni shu yerga yozing",
+      to_doctor: "Oilaviy shifokoringizga yuborildi",
+      to_nurse: "Patronaj hamshirasiga yuborildi",
     },
     ru: {
       incoming: "Входящий звонок",
@@ -46,6 +55,15 @@
       send: "Отправить",
       proc: "Обрабатываю ответы…",
       again: "Позвонить снова",
+      oper: "Поговорить с сотрудником",
+      oper_h: "Запрос принят",
+      call_now: "Позвонить сейчас:",
+      msg_h: "Обращение к врачу",
+      speak: "Говорите ваше обращение",
+      finish: "Готово",
+      type_here: "Напишите ваше обращение здесь",
+      to_doctor: "Передано вашему семейному врачу",
+      to_nurse: "Передано патронажной медсестре",
     },
   };
   let info,
@@ -93,7 +111,7 @@
       player.play().catch(() => setTimeout(fin, 1200 + text.length * 45));
     });
 
-  function record(maxMs = 9000) {
+  function record(maxMs = 9000, quietMs = 1300) {
     // resolves with a Blob, or null if the patient used a button instead
     return new Promise((res) => {
       if (!stream) return res(null);
@@ -134,7 +152,7 @@
         if (rms > 6) {
           spoke = true;
           silence = 0;
-        } else if (spoke && (silence += 100) >= 1300) stop();
+        } else if (spoke && (silence += 100) >= quietMs) stop();
       }, 100);
       const to = setTimeout(stop, maxMs);
       record.cancel = false;
@@ -152,11 +170,34 @@
       .catch(() => ({}));
   };
 
-  async function ask(q, i) {
+  const say = (key) => (info.tts && info.say && info.say[key] ? play("say_" + key, info.say[key]) : Promise.resolve());
+  const beep = () => {
+    try {
+      const o = ctx.createOscillator(),
+        g = ctx.createGain();
+      o.frequency.value = 880;
+      g.gain.value = 0.08;
+      o.connect(g);
+      g.connect(ctx.destination);
+      o.start();
+      o.stop(ctx.currentTime + 0.18);
+    } catch {}
+  };
+  const hear = (blob) => {
+    const fd = new FormData();
+    fd.append("audio", blob, "a." + (blob.type.split("/")[1] || "webm").split(";")[0]);
+    return fetch(`/api/call/${token}/hear`, { method: "POST", body: fd })
+      .then((r) => r.json())
+      .catch(() => ({}));
+  };
+
+  // One question. Resolves with what was understood: {value, flagged, voice} or {operator: true}.
+  // `q.local` is a question outside the scenario (the offer to leave a message): its answer is not stored.
+  async function ask(q, label) {
     const num = q.type === "number";
-    box.innerHTML = `<div><div class="ai-note">${i + 1} / ${info.questions.length}</div><div class="avatar">N</div></div><div class="qtext">${esc(q.text)}</div>
+    box.innerHTML = `<div><div class="ai-note">${label}</div><div class="avatar">N</div></div><div class="qtext">${esc(q.text)}</div>
       <div><div class="listen" id="st">${t.wait}</div><div class="bar"><i></i></div><div class="ans mt">${num ? `<button data-v="idk">${t.idk}</button>` : `<button data-v="yes">${t.yes}</button><button data-v="no">${t.no}</button>`}</div>
-      <div class="heard mt" id="heard"></div></div><div class="ai-note">${t.ai}</div>`;
+      <div class="heard mt" id="heard"></div><button class="oper" id="op">☎ ${t.oper}</button></div><div class="ai-note">${t.ai}</div>`;
     let btn = null,
       blob = null,
       tapped = () => {};
@@ -169,7 +210,8 @@
       tapped();
     };
     box.querySelectorAll("[data-v]").forEach((b) => (b.onclick = () => choose(b.dataset.v)));
-    await play(q.id, q.text);
+    document.getElementById("op").onclick = () => choose("operator");
+    await play(q.audio || q.id, q.text);
     if (btn === null && stream) {
       document.getElementById("st").textContent = t.listen;
       blob = await record(num ? 8000 : 7000);
@@ -189,16 +231,69 @@
         setTimeout(res, 45000);
       });
     }
-    if (btn !== null) pending.push(post(q.id, null, btn === "idk" ? "" : btn));
-    else if (blob && blob.size > 800)
-      pending.push(
-        post(q.id, blob).then((r) => {
-          const h = document.getElementById("heard");
-          if (h && r.transcript) h.textContent = `${t.heard}: «${r.transcript}»`;
-          return r;
-        }),
-      );
-    else pending.push(post(q.id, null, "unclear"));
+    if (btn === "operator") return { operator: true };
+    const spoken = btn === null && blob && blob.size > 800;
+    if (q.local) {
+      if (!spoken) return { value: btn || "unclear", voice: false };
+      const r = await hear(blob);
+      return r.operator ? { operator: true, said: r.transcript } : { value: r.value || "unclear", voice: true };
+    }
+    const sent = spoken ? post(q.id, blob) : post(q.id, null, btn === null ? "unclear" : btn === "idk" ? "" : btn);
+    pending.push(sent);
+    const r = await sent; // the next words depend on what was understood
+    const h = document.getElementById("heard");
+    if (spoken && h && r.transcript) h.textContent = `${t.heard}: «${r.transcript}»`;
+    return r.operator ? { operator: true, said: r.transcript } : { value: r.value, flagged: r.flagged, voice: spoken };
+  }
+
+  const hangUp = () => stream && stream.getTracks().forEach((x) => x.stop());
+
+  // The caller asked for a person: staff get a task to ring back; the answers given so far are kept.
+  async function operator(said) {
+    const fd = new FormData();
+    fd.append("said", said || "");
+    const r = await fetch(`/api/call/${token}/operator`, { method: "POST", body: fd })
+      .then((x) => x.json())
+      .catch(() => ({}));
+    await Promise.all(pending);
+    fetch(`/api/call/${token}/finish?quiet=1`, { method: "POST" }).catch(() => {});
+    box.innerHTML = `<div><div class="avatar">☎</div><h1>${t.oper_h}</h1></div><div class="qtext">${esc(info.say.operator_ok)}</div>
+      <div>${r.phone ? `<a class="oper" href="tel:${r.phone.replace(/[^+\d]/g, "")}">${t.call_now} ${esc(r.phone)}</a>` : ""}</div><div class="ai-note">${t.ai}</div>`;
+    await say("operator_ok");
+    hangUp();
+  }
+
+  // The offer at the end: leave a message for the doctor. Returns "operator" if she asked for a person instead.
+  async function appeal() {
+    const want = await ask({ id: "murojaat", audio: "say_appeal_q", text: info.say.appeal_q, type: "yesno", local: true }, t.msg_h);
+    if (want.operator) return "operator";
+    if (want.value !== "yes") return;
+    const fd = new FormData();
+    const screen = (inner) =>
+      (box.innerHTML = `<div><div class="ai-note">${t.msg_h}</div><div class="avatar ring">●</div></div><div class="qtext">${t.speak}</div><div>${inner}</div><div class="ai-note">${t.ai}</div>`);
+    if (stream) {
+      screen(`<div class="listen" id="st">${t.wait}</div><div class="bar"><i></i></div><div class="ans mt"><button id="done">${t.finish}</button></div>`);
+      await say("appeal_go");
+      beep();
+      document.getElementById("st").textContent = t.listen;
+      document.getElementById("done").onclick = () => record.stop && record.stop();
+      const blob = await record(45000, 2600); // up to 45 seconds; a long pause or the button ends it
+      if (blob && blob.size > 800) fd.append("audio", blob, "m." + (blob.type.split("/")[1] || "webm").split(";")[0]);
+    } else {
+      // no microphone: the message can be typed
+      screen(`<textarea id="msg" rows="4" placeholder="${t.type_here}"></textarea><div class="ans mt"><button id="done">${t.send}</button></div>`);
+      await new Promise((res) => (document.getElementById("done").onclick = res));
+      fd.append("text", document.getElementById("msg").value);
+    }
+    box.innerHTML = `<div><div class="avatar">N</div></div><div class="qtext">${t.proc}</div><div></div>`;
+    const r = await fetch(`/api/call/${token}/appeal`, { method: "POST", body: fd })
+      .then((x) => x.json())
+      .catch(() => ({}));
+    if (!r.ok) return say("appeal_fail");
+    const nurse = r.to === "hamshira";
+    box.innerHTML = `<div><div class="avatar">✓</div><div class="ai-note mt">${nurse ? t.to_nurse : t.to_doctor}${r.doctor ? ": " + esc(r.doctor) : ""}</div></div>
+      <div class="qtext">«${esc(r.transcript)}»</div><div class="ai-note">${t.ai}</div>`;
+    await say(nurse ? "appeal_ok_nurse" : "appeal_ok");
   }
 
   async function run() {
@@ -212,7 +307,25 @@
     if (ctx.state === "suspended") await ctx.resume();
     box.innerHTML = `<div><div class="avatar ring">N</div><h1>Nigoh</h1></div><div class="qtext">${esc(info.greeting)}</div><div class="ai-note">${t.ai}</div>`;
     await play("greeting", info.greeting);
-    for (let i = 0; i < info.questions.length; i++) await ask(info.questions[i], i);
+    await say("hint");
+    let human = null,
+      acks = 0;
+    for (let i = 0; i < info.questions.length; i++) {
+      const q = info.questions[i],
+        label = `${i + 1} / ${info.questions.length}`;
+      let r = await ask(q, label);
+      if (!r.operator && r.voice && r.value === "unclear" && q.type !== "number") {
+        await say("retry"); // one more try, like a person would ask again; then the call moves on
+        r = await ask(q, label);
+      }
+      if (r.operator) {
+        human = r;
+        break;
+      }
+      await say(r.flagged ? "ack_flag" : "ack" + (1 + (acks++ % 3))); // a short reaction before the next question
+    }
+    if (!human && info.say && (await appeal()) === "operator") human = {};
+    if (human) return operator(human.said);
     box.innerHTML = `<div><div class="avatar">N</div></div><div class="qtext">${t.proc}</div><div></div>`;
     const audio = (part) => `/api/call/${token}/audio/${part}`;
     const finished = Promise.all(pending)
@@ -231,7 +344,7 @@
       parts.slice(1).forEach((_, i) => fetch(audio(`closing?i=${i + 1}`)).catch(() => {}));
       for (let i = 0; i < parts.length; i++) await play(`closing?i=${i}`, parts[i]);
     } else await play(res.closing ? "closing" : fixed, text);
-    stream && stream.getTracks().forEach((x) => x.stop());
+    hangUp();
   }
 
   async function init() {

@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func
 from sqlalchemy.orm import joinedload
 
-from . import config, rules, telegram
+from . import config, dialogue, extract, rules, telegram
 from .db import AuditLog, Call, Notice, Observation, Patient, RiskEvent, Task
 from .schemas import Vitals
 
@@ -23,8 +23,20 @@ for _f in sorted(os.listdir(os.path.join(HERE, "scenarios"))):
 NUM = ["bp_sys", "bp_dia", "hb", "glucose", "temp", "pulse", "breath"]
 ZONE_UZ = {"red": "QIZIL", "yellow": "SARIQ", "green": "YASHIL"}
 ZONE_RU = {"red": "КРАСНАЯ", "yellow": "ЖЁЛТАЯ", "green": "ЗЕЛЁНАЯ"}
-TASK_UZ = {"faol_chaqiruv": "Faol chaqiruv", "mutaxassis": "Mutaxassis ko'rigi", "hamshira_tashrif": "Hamshira tashrifi"}
-TASK_RU = {"faol_chaqiruv": "Активный вызов", "mutaxassis": "Осмотр специалиста", "hamshira_tashrif": "Визит медсестры"}
+TASK_UZ = {
+    "faol_chaqiruv": "Faol chaqiruv",
+    "mutaxassis": "Mutaxassis ko'rigi",
+    "hamshira_tashrif": "Hamshira tashrifi",
+    "murojaat": "Bemor murojaati",
+    "qayta_qongiroq": "Qayta qo'ng'iroq",
+}
+TASK_RU = {
+    "faol_chaqiruv": "Активный вызов",
+    "mutaxassis": "Осмотр специалиста",
+    "hamshira_tashrif": "Визит медсестры",
+    "murojaat": "Обращение пациента",
+    "qayta_qongiroq": "Перезвонить пациенту",
+}
 
 
 def now():
@@ -196,6 +208,78 @@ def task_done(db, task, note=""):
     return call
 
 
+def responsible(patient):
+    """Who answers for this patient day to day: (role, name).
+
+    A patient is attached to a family doctor, named on the card; that doctor's account sees the patient's
+    tasks. A card without a doctor belongs to the patronage nurse. Warning signs are a separate road: the
+    zone rules send them to the specialist whoever the patient is attached to, and anything left undone
+    past its deadline goes to the head of the district.
+    """
+    return ("shifokor", patient.doctor) if patient.doctor else ("hamshira", "")
+
+
+def appeal(db, call, text):
+    """A message the patient left at the end of a call. It goes at once to the person the patient is
+    attached to, as a task with a deadline, and is kept in the patient's history. If the words contain a
+    warning sign, the zone rules treat it like any other report: red zone, specialist, urgent notice."""
+    p = call.patient
+    role, name = responsible(p)
+    found = [c for c in extract.extract(text)["data"].get("complaints") or [] if c in rules.COMPLAINTS]
+    urgent = any(c in rules.T["red_complaints"] for c in found)
+    if found:  # the same road as a symptom reported in any other way
+        add_observation(db, p, "murojaat", {"complaints": found}, {"complaints": dict.fromkeys(found, text[:200])}, text, "Bemor")
+    else:
+        o = Observation(patient_id=p.id, source="murojaat", data={}, quotes={}, text=text, author="Bemor", created_at=now())
+        db.add(o)
+        p.observations.append(o)
+        p.last_contact_at = now()
+    t = Task(
+        patient_id=p.id, type="murojaat", role=role, reason=text[:240], due_at=now() + timedelta(hours=2 if urgent else config.APPEAL_HOURS), created_at=now()
+    )
+    db.add(t)
+    p.tasks.append(t)
+    notify(
+        db,
+        p,
+        role,
+        "red" if urgent else "yellow",
+        f"MUROJAAT: {p.full_name} ({p.mahalla}, {p.phone}): {text[:220]}",
+        f"ОБРАЩЕНИЕ: {p.full_name} ({p.mahalla}, {p.phone}): {text[:220]}",
+    )
+    call.answers = {**(call.answers or {}), "murojaat": {"value": "yes", "transcript": text, "complaints": found, "to": role}}
+    audit(db, "bemor", "appeal_left", p, f"-> {role} {name}".strip())
+    return {"role": role, "doctor": name, "urgent": urgent, "task": t}
+
+
+def callback(db, call, said=""):
+    """The caller asked for a person. A member of staff must ring back within the time the call promised:
+    the patronage nurse, or the specialist when the patient is in the red zone. Overdue goes to the head."""
+    p = call.patient
+    role = "mutaxassis" if p.zone == "red" else "hamshira"
+    t = Task(
+        patient_id=p.id,
+        type="qayta_qongiroq",
+        role=role,
+        reason=("Bemor xodim bilan gaplashishni so'radi" + (f": {said}" if said else ""))[:240],
+        due_at=now() + timedelta(minutes=dialogue.CALLBACK_MINUTES),
+        created_at=now(),
+    )
+    db.add(t)
+    p.tasks.append(t)
+    notify(
+        db,
+        p,
+        role,
+        "yellow",
+        f"QAYTA QO'NG'IROQ: {p.full_name} ({p.phone}) xodim bilan gaplashishni so'radi. {dialogue.CALLBACK_MINUTES} daqiqa ichida qo'ng'iroq qiling.",
+        f"ПЕРЕЗВОНИТЬ: {p.full_name} ({p.phone}) просит поговорить с сотрудником. Позвоните в течение {dialogue.CALLBACK_MINUTES} минут.",
+    )
+    call.answers = {**(call.answers or {}), "operator": {"value": "yes", "transcript": said}}
+    audit(db, "bemor", "operator_asked", p, f"-> {role}")
+    return t
+
+
 def finish_call(db, call):
     """Turn call answers into data: complaints, flags, zone, visit verification."""
     sc = SCENARIOS[call.scenario]
@@ -223,8 +307,19 @@ def finish_call(db, call):
             quotes.setdefault("complaints", {})[q["complaint"]] = a.get("transcript", "")
         elif flagged and q.get("extra"):
             extra.append(q["extra"])
+    note = (call.answers or {}).get("murojaat") or {}
+    for c in note.get("complaints") or []:  # signs named in the message she left count like answers
+        if c in rules.COMPLAINTS and c not in complaints:
+            complaints.append(c)
+            quotes.setdefault("complaints", {})[c] = (note.get("transcript") or "")[:200]
     call.status, call.finished_at = "tugadi", now()
-    call.flags = complaints + extra + ([] if verified in (None, True) else ["tashrif_tasdiqlanmadi"])
+    call.flags = (
+        complaints
+        + extra
+        + ([] if verified in (None, True) else ["tashrif_tasdiqlanmadi"])
+        + (["murojaat"] if note else [])
+        + (["operator"] if (call.answers or {}).get("operator") else [])
+    )
     if call.scenario == "tashrif_tasdiq":
         t = db.get(Task, call.task_id) if call.task_id else None
         if t and verified is not None:
