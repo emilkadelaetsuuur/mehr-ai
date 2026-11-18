@@ -1,5 +1,6 @@
 """Nigoh application: wiring only. Domain logic lives in core.py, HTTP handlers in app/api/."""
 
+import hashlib
 import logging
 import os
 import threading
@@ -18,6 +19,18 @@ log = logging.getLogger("nigoh")
 WEB = os.path.join(os.path.dirname(os.path.dirname(__file__)), "web")
 OPEN_PATHS = ("/api/login", "/api/logout", "/api/health", "/api/call/", "/api/tel/", "/api/gateway/", "/api/qr", "/api/meta")
 _stop = threading.Event()
+
+
+def _build():
+    """A short fingerprint of the interface files: it changes whenever a release changes them."""
+    h = hashlib.sha1()
+    for name in ("app.js", "i18n.js", "call.js", "styles.css", "index.html"):
+        with open(os.path.join(WEB, name), "rb") as f:
+            h.update(f.read())
+    return h.hexdigest()[:10]
+
+
+BUILD = _build()
 
 
 def scheduler():
@@ -72,6 +85,8 @@ async def session_guard(request: Request, call_next):
     resp = await call_next(request)
     if path.endswith((".html", ".js", ".css")) or path == "/" or path.startswith("/call/"):
         resp.headers["Cache-Control"] = "no-cache"
+    if path.startswith("/api/"):
+        resp.headers["X-Nigoh-Build"] = BUILD  # a tab opened before a release sees a new value and reloads itself
     return resp
 
 

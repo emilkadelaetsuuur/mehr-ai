@@ -1,19 +1,32 @@
 """Registry: list, patient card, confirmed voice card, results, discharge, consent, exports."""
 
+import json
+import time
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import event
 
 from .. import config, core, fhir, ml, pdfgen, rules
-from ..db import AuditLog, Patient
+from ..db import AuditLog, Patient, SessionLocal
 from ..schemas import CallIn, ConfirmIn, NoteIn, ObservationIn
 from .deps import brief, call_json, current_user, db_session, get_patient, iso, task_json
 
 router = APIRouter(prefix="/api/patients")
+_lists = {}  # (filters) -> (when, finished JSON): a short-lived copy of the registry list
+
+
+@event.listens_for(SessionLocal, "after_commit")
+def _forget_lists(_session):
+    _lists.clear()  # any change to the data makes every copy stale
 
 
 @router.get("")
 def list_patients(zone: str = "", q: str = "", kind: str = "", silent: int = 0, limit: int = 400, db=Depends(db_session)):
+    key = (zone, q, kind, silent, limit)
+    hit = _lists.get(key)
+    if hit and time.time() - hit[0] < 3:  # every open registry asks for the same list every few seconds
+        return Response(hit[1], media_type="application/json")
     qs = db.query(Patient)
     if zone:
         qs = qs.filter(Patient.zone == zone)
@@ -25,7 +38,11 @@ def list_patients(zone: str = "", q: str = "", kind: str = "", silent: int = 0, 
         qs = qs.filter(Patient.last_contact_at < core.now() - timedelta(days=config.SILENT_DAYS))
     rows = qs.all()
     rows.sort(key=lambda p: (-rules.ORDER.get(p.zone or "green", 0), p.last_contact_at or core.now()))
-    return [brief(p) for p in rows[:limit]]
+    out = json.dumps([brief(p) for p in rows[:limit]], ensure_ascii=False).encode()
+    if len(_lists) > 200:
+        _lists.clear()
+    _lists[key] = (time.time(), out)
+    return Response(out, media_type="application/json")
 
 
 @router.post("/confirm")

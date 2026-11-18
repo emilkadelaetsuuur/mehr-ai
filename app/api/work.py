@@ -5,7 +5,7 @@ from sqlalchemy.orm import joinedload
 
 from .. import core, simline, telephony
 from ..db import Call, Patient, Task
-from ..schemas import DialIn, NoteIn
+from ..schemas import DialIn, NoteIn, RoundIn
 from .deps import call_json, can_close, current_user, db_session, task_json
 
 router = APIRouter(prefix="/api")
@@ -44,6 +44,33 @@ def done(tid: int, body: NoteIn = NoteIn(), db=Depends(db_session), u=Depends(cu
 def calls(db=Depends(db_session)):
     rows = db.query(Call).options(joinedload(Call.patient)).order_by(Call.planned_at.desc()).limit(150).all()
     return [call_json(c) for c in rows]
+
+
+@router.get("/calls/audience")
+def round_audience(scenario: str, zone: str = "", db=Depends(db_session)):
+    """How many patients a calling round would reach, and why the others are left out."""
+    if scenario not in core.SCENARIOS:
+        raise HTTPException(400, "scenario")
+    a = core.audience(db, scenario, zone if zone in ("red", "yellow", "green") else "")
+    return {"fit": len(a["fit"]), "no_consent": a["no_consent"], "already": a["already"], "who": core.SCENARIOS[scenario].get("who", "any")}
+
+
+@router.post("/calls/round")
+def start_round(body: RoundIn, db=Depends(db_session), u=Depends(current_user)):
+    """Start a calling round for a group, or one trial call whose link opens as a QR code."""
+    if body.scenario not in core.SCENARIOS:
+        raise HTTPException(400, "scenario")
+    if body.test:
+        c = core.trial_call(db, body.scenario, body.lang)
+        made = [c] if c else []
+    else:
+        made = core.start_round(db, body.scenario, body.lang, body.zone, body.limit)
+    if made:
+        core.audit(
+            db, u, "round_started", None if len(made) > 1 else made[0].patient, f"{body.scenario}: {len(made)} qo'ng'iroq" + (" (sinov)" if body.test else "")
+        )
+    db.commit()
+    return {"calls": [call_json(c) for c in made]}
 
 
 @router.post("/calls/{cid}/dial")

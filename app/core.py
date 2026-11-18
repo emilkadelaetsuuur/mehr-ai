@@ -163,6 +163,57 @@ def create_call(db, patient, scenario, task_id=None, planned_at=None):
     return c
 
 
+UNFINISHED = ("rejalashtirilgan", "jarayonda")
+# the prepared patient for a trial call of each kind of scenario
+TRIAL = {"homilador": "Sodiqova Dilnoza", "tuqqan": "Valiyeva Madina", "chaqaloq": "Valiyev Amir", "any": "Valiyeva Madina"}
+
+
+def audience(db, scenario, zone=""):
+    """Who a calling round with this scenario can reach. A scenario is written for one kind of patient; AI
+    calls need consent; and a patient who already has an unfinished call of this scenario is not rung twice.
+    The most worrying zone and the longest silence come first."""
+    who = SCENARIOS[scenario].get("who", "any")
+    q = db.query(Patient)
+    if who != "any":
+        q = q.filter(Patient.kind == who)
+    if zone:
+        q = q.filter(Patient.zone == zone)
+    rows = q.all()
+    busy = {pid for (pid,) in db.query(Call.patient_id).filter(Call.scenario == scenario, Call.status.in_(UNFINISHED))}
+    fit = [p for p in rows if p.consent_at and p.id not in busy]
+    fit.sort(key=lambda p: (-rules.ORDER.get(p.zone or "green", 0), p.last_contact_at or now()))
+    return {"fit": fit, "no_consent": sum(1 for p in rows if not p.consent_at), "already": sum(1 for p in rows if p.consent_at and p.id in busy)}
+
+
+def start_round(db, scenario, lang=None, zone="", limit=10):
+    """A calling round: one call for each of the first `limit` patients the scenario can reach."""
+    made = []
+    for p in audience(db, scenario, zone)["fit"][:limit]:
+        if lang:
+            p.lang = lang
+        made.append(create_call(db, p, scenario))
+    return made
+
+
+def trial_call(db, scenario, lang=None):
+    """One call to try a scenario on the prepared demonstration patient. An unfinished call of the same
+    scenario is used again, so that trying it several times does not pile calls up."""
+    who = SCENARIOS[scenario].get("who", "any")
+    p = db.query(Patient).filter(Patient.full_name == TRIAL.get(who, TRIAL["any"]), Patient.consent_at.isnot(None)).first()
+    if not p:
+        fit = audience(db, scenario)["fit"]
+        p = fit[0] if fit else None
+    if not p:
+        return None
+    if lang:
+        p.lang = lang
+    c = next((c for c in sorted(p.calls, key=lambda c: c.id, reverse=True) if c.scenario == scenario and c.status in UNFINISHED), None)
+    if c:
+        c.lang = p.lang or "uz"
+        return c
+    return create_call(db, p, scenario)
+
+
 def discharge(db, patient, note=""):
     """Hospital discharge of a high-risk patient -> 'Faol chaqiruv' for the family doctor + planned AI calls."""
     patient.discharged_at = now()

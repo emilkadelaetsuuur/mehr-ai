@@ -82,5 +82,13 @@ class LineReportIn(BaseModel):
     state: str = Field(max_length=20)
 
 
+class RoundIn(BaseModel):
+    scenario: str
+    lang: Literal["uz", "ru"] | None = None
+    zone: Literal["", "red", "yellow", "green"] = ""
+    limit: int = Field(10, ge=1, le=50)
+    test: bool = False  # one trial call instead of a round
+
+
 class LabImportIn(BaseModel):
     csv: str = Field(max_length=400_000)

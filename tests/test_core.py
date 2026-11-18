@@ -549,6 +549,30 @@ def test_phone_line_dialogue_and_telegram_binding(monkeypatch):
         assert "topilmadi" in telegram.handle_update(db, {"message": {"text": "/start nope", "chat": {"id": 1}}})
 
 
+def test_a_calling_round_reaches_only_those_it_may():
+    """A round rings the patients a scenario is written for who gave consent, the most worrying first, never
+    twice; a trial call goes to the prepared patient and is not piled up by pressing the button again."""
+    with TestClient(app) as c:
+        a = c.get("/api/calls/audience", params={"scenario": "homilador"}).json()
+        assert a["who"] == "homilador" and a["fit"] > 0
+        red = c.get("/api/calls/audience", params={"scenario": "homilador", "zone": "red"}).json()["fit"]
+        assert 0 < red < a["fit"]
+        made = c.post("/api/calls/round", json={"scenario": "homilador", "lang": "ru", "zone": "red", "limit": 5}).json()["calls"]
+        assert len(made) == min(5, red) and all(x["status"] == "rejalashtirilgan" and x["scenario"] == "homilador" for x in made)
+        ids = {x["patient"]["id"] for x in made}
+        assert len(ids) == len(made)  # one call each
+        assert all(c.get(f"/api/patients/{i}").json()["zone"] == "red" for i in ids)
+        after = c.get("/api/calls/audience", params={"scenario": "homilador", "zone": "red"}).json()
+        assert after["fit"] == red - len(made) and after["already"] >= len(made)  # they are not rung twice
+        assert c.post("/api/calls/round", json={"scenario": "yoq"}).status_code == 400
+
+        one = c.post("/api/calls/round", json={"scenario": "chaqaloq_30kun", "lang": "uz", "test": True}).json()["calls"]
+        assert len(one) == 1 and one[0]["patient"]["name"] == "Valiyev Amir" and one[0]["url"].endswith(one[0]["token"])
+        again = c.post("/api/calls/round", json={"scenario": "chaqaloq_30kun", "test": True}).json()["calls"]
+        assert again[0]["id"] == one[0]["id"]  # the same unfinished call, not a new one each time
+        assert c.get(f"/api/call/{one[0]['token']}").json()["questions"]  # the link the QR code holds opens the call
+
+
 def test_a_phone_with_a_sim_card_as_the_line(monkeypatch):
     """Staff ask for a call; the rig next to the phone takes it, reports what happens on the line, and three
     unanswered attempts become a home visit, as with any other call."""
@@ -592,5 +616,8 @@ def test_frontend_script_is_complete():
     import re
 
     js = pathlib.Path("web/app.js").read_text(encoding="utf-8")
+    # A screen redraws itself, so its refresh timer must be replaced, never added: timers that pile up double
+    # the requests on every tick (a tab left open took the site down this way).
+    assert "S.timers.push" not in js and js.count("refreshEvery(") == 5
     defined = set(re.findall(r"(?:function|const) (\w+)", js))
     assert {"home", "patient", "tasks", "calls", "voice", "about", "profile", "showLogin", "showCall", "taskRow", "callRow", "flagLabel", "obsText"} <= defined

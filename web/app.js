@@ -23,6 +23,9 @@
     }
     opt.headers = { ...(opt.headers || {}), "X-Role": S.role };
     const r = await fetch("/api" + path, { credentials: "same-origin", ...opt });
+    const build = r.headers.get("X-Nigoh-Build");
+    if (build && S.build && build !== S.build) S.stale = true; // the site was updated while this tab was open
+    if (build && !S.build) S.build = build;
     if (r.status === 401) {
       showLogin();
       throw new Error("auth");
@@ -38,6 +41,28 @@
     close: (x) =>
       S.role === "rahbar" || (S.role === x.role && !(S.role === "shifokor" && S.me?.doctor && x.patient?.doctor && x.patient.doctor !== S.me.doctor)),
   };
+  // One refresh timer per screen. A screen redraws itself (a filter, a button, the timer's own tick), and every
+  // redraw used to add a timer on top of the old ones: their number doubled on each tick, and a tab left open
+  // for a few minutes sent hundreds of requests a second. The timer is now replaced, a tick is skipped while
+  // the previous one is still loading, and a tab nobody is looking at does not ask at all.
+  function refreshEvery(ms, redraw, idle = () => true) {
+    S.timers.forEach(clearInterval);
+    let busy = false;
+    S.timers = [
+      setInterval(async () => {
+        if (busy || document.hidden || document.querySelector(".modal") || !idle()) return;
+        if (S.stale) return location.reload(); // pick up the new version at a quiet moment
+        busy = true;
+        try {
+          await redraw();
+        } catch {
+          /* the next tick tries again */
+        } finally {
+          busy = false;
+        }
+      }, ms),
+    ];
+  }
   function toast(msg, ms = 3200) {
     document.querySelectorAll(".toast").forEach((e) => e.remove());
     const d = document.createElement("div");
@@ -266,11 +291,7 @@
         }
       } else if (p) location.hash = "#/bemor/" + p.dataset.p;
     };
-    S.timers.push(
-      setInterval(() => {
-        if (document.activeElement?.id !== "q" && !document.querySelector(".modal")) home();
-      }, 10000),
-    );
+    refreshEvery(15000, home, () => document.activeElement?.id !== "q");
   }
 
   /* ---------- patient card ---------- */
@@ -447,11 +468,7 @@
       if (d) markDone(d.dataset.done, () => patient(id));
       else if (c) showCall(JSON.parse(c.dataset.call).url, null, null, JSON.parse(c.dataset.call).id);
     };
-    S.timers.push(
-      setInterval(() => {
-        if (!document.querySelector(".modal") && document.activeElement?.tagName !== "INPUT") patient(id);
-      }, 15000),
-    );
+    refreshEvery(15000, () => patient(id), () => document.activeElement?.tagName !== "INPUT");
   }
 
   /* ---------- tasks & calls ---------- */
@@ -467,20 +484,53 @@
       const d = e.target.closest("[data-done]");
       if (d) markDone(d.dataset.done, tasks);
     };
-    S.timers.push(setInterval(() => !document.querySelector(".modal") && tasks(), 20000));
+    refreshEvery(20000, tasks);
   }
   async function calls() {
-    const rows = await api("/calls");
+    const R = (S.round = S.round || { scenario: S.meta.scenarios[0]?.id, lang: S.lang === "ru" ? "ru" : "uz", zone: "", limit: 10 });
+    const [rows, aud] = await Promise.all([api("/calls"), api("/calls/audience?" + new URLSearchParams({ scenario: R.scenario, zone: R.zone }))]);
     const plan = rows.filter((c) => c.status !== "tugadi" && c.status !== "javobsiz"),
       done = rows.filter((c) => c.status === "tugadi" || c.status === "javobsiz");
+    const opt = (v, label, cur) => `<option value="${esc(v)}" ${String(v) === String(cur) ? "selected" : ""}>${esc(label)}</option>`;
+    // The panel a calling round is started from. A trial call opens a QR code: scan it with a phone and talk to the AI.
+    const panel = `<div class="card mb"><h2>${t("round_h")}</h2><p class="small">${t("round_p")}</p>
+      <div class="row-b mt">
+        <div><label>${t("round_sc")}</label><select id="rsc">${S.meta.scenarios.map((x) => opt(x.id, L(x.title), R.scenario)).join("")}</select></div>
+        <div><label>${t("round_lang")}</label><select id="rlang">${opt("uz", "O'zbekcha", R.lang)}${opt("ru", "Русский", R.lang)}</select></div>
+        <div><label>${t("round_zone")}</label><select id="rzone">${opt("", t("round_all"), R.zone)}${["red", "yellow", "green"].map((z) => opt(z, t("z" + z), R.zone)).join("")}</select></div>
+        <div><label>${t("round_limit")}</label><select id="rlim">${[1, 5, 10, 20, 50].map((n) => opt(n, n, R.limit)).join("")}</select></div>
+      </div>
+      <p class="mt"><b>${t("round_aud")}: ${aud.fit}</b> <span class="small">· ${t("round_nocons")}: ${aud.no_consent} · ${t("round_busy")}: ${aud.already}</span></p>
+      <div class="row-b mt"><button class="btn" id="rtest">${t("round_test")}</button><button class="btn ghost" id="rgo" ${aud.fit ? "" : "disabled"}>${t("round_go")} · ${Math.min(aud.fit, R.limit)}</button></div></div>`;
     $("#app").innerHTML =
-      `<h1>${t("nav_calls")}</h1><div class="grid two"><div><h2>${t("c_tugadi")} · ${done.length}</h2>${done.map((c) => callRow(c, 1)).join("") || `<p class="small">${t("empty")}</p>`}</div>
+      `<h1>${t("nav_calls")}</h1>${panel}<div class="grid two"><div><h2>${t("c_tugadi")} · ${done.length}</h2>${done.map((c) => callRow(c, 1)).join("") || `<p class="small">${t("empty")}</p>`}</div>
       <div><h2>${t("c_rejalashtirilgan")} · ${plan.length}</h2>${plan.map((c) => callRow(c, 1)).join("") || `<p class="small">${t("empty")}</p>`}</div></div>`;
+    const pick = (id, key, num) =>
+      ($("#" + id).onchange = (e) => {
+        R[key] = num ? Number(e.target.value) : e.target.value;
+        calls();
+      });
+    pick("rsc", "scenario");
+    pick("rlang", "lang");
+    pick("rzone", "zone");
+    pick("rlim", "limit", true);
+    $("#rtest").onclick = async () => {
+      const r = await api("/calls/round", { json: { scenario: R.scenario, lang: R.lang, test: true } });
+      if (!r.calls.length) return toast(t("round_none"));
+      showCall(r.calls[0].url, t("round_test_h"), `${esc(r.calls[0].patient?.name || "")} · ${esc(L(r.calls[0].title))}. ${t("round_test_p")}`, r.calls[0].id);
+    };
+    $("#rgo").onclick = async () => {
+      const n = Math.min(aud.fit, R.limit);
+      if (!n || !confirm(`${n} ${t("round_sure")}`)) return;
+      const r = await api("/calls/round", { json: { scenario: R.scenario, lang: R.lang, zone: R.zone, limit: R.limit } });
+      toast(`${r.calls.length} ${t("round_done")}`, 5000);
+      calls();
+    };
     $("#app").onclick = (e) => {
       const c = e.target.closest("[data-call]");
       if (c) showCall(JSON.parse(c.dataset.call).url, null, null, JSON.parse(c.dataset.call).id);
     };
-    S.timers.push(setInterval(() => !document.querySelector(".modal") && calls(), 12000));
+    refreshEvery(12000, calls, () => document.activeElement?.tagName !== "SELECT");
   }
 
   /* ---------- voice input with offline queue ---------- */

@@ -19,11 +19,13 @@ from .deps import brief, current_user, db_session, iso, require
 router = APIRouter(prefix="/api")
 log = logging.getLogger("nigoh.auth")
 _dash = {"at": 0.0, "data": None}
+_pages = {}  # role -> (when, finished JSON of the summary page)
 
 
 @event.listens_for(SessionLocal, "after_commit")
 def _invalidate(_session):
     _dash["data"] = None  # any write makes the cached district summary stale
+    _pages.clear()
 
 
 @router.get("/health")
@@ -116,6 +118,9 @@ def meta(db=Depends(db_session)):
 
 @router.get("/dashboard")
 def dashboard(db=Depends(db_session), u=Depends(current_user)):
+    hit = _pages.get(u.role)
+    if hit and time.time() - hit[0] < 3:  # every open registry asks for this every few seconds
+        return Response(hit[1], media_type="application/json")
     if _dash["data"] is None or time.time() - _dash["at"] > 5:
         _dash["data"], _dash["at"] = core.dashboard(db), time.time()
     d = dict(_dash["data"])
@@ -127,7 +132,9 @@ def dashboard(db=Depends(db_session), u=Depends(current_user)):
         for n in q.order_by(Notice.id.desc()).limit(25)
     ]
     d["demo"] = [brief(p) for n in ("Sodiqova Dilnoza", "Valiyeva Madina", "Valiyev Amir") for p in db.query(Patient).filter(Patient.full_name == n).limit(1)]
-    return d
+    out = json.dumps(d, ensure_ascii=False).encode()
+    _pages[u.role] = (time.time(), out)
+    return Response(out, media_type="application/json")
 
 
 @router.get("/audit")
