@@ -8,6 +8,11 @@ os.environ["DATABASE_URL"] = f"sqlite:///{_tmp}/test.db"  # never the real datab
 os.environ["DATA_DIR"] = _tmp
 os.environ["VOICELAB_API_KEY"] = ""
 os.environ["DEMO_PASSWORD"] = ""
+# The suite also runs inside the production container: it must not inherit that environment
+# (an https PUBLIC_URL makes the session cookie Secure; real tokens would reach real services).
+os.environ["PUBLIC_URL"] = "http://testserver"
+for _k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM"):
+    os.environ[_k] = ""
 
 from fastapi.testclient import TestClient  # noqa: E402
 
