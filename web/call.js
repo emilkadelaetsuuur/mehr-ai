@@ -322,11 +322,29 @@
       box.innerHTML = `<div></div><div class="qtext">Mikrofon topilmadi · Микрофон не найден</div><div></div>`;
       return onLine("nomic");
     }
+    if (LINE && opts.get("hold") === "1") {
+      // Opened while the phone is still ringing: everything is made ready now, so that the first word is
+      // spoken the moment the person picks up and not after the browser has finished starting.
+      ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
+      if (ctx.state === "suspended") await ctx.resume();
+      fetch(`/api/call/${token}/audio/greeting`).catch(() => {});
+      box.innerHTML = `<div><div class="avatar ring">N</div></div><div class="qtext">…</div><div></div>`;
+      await onLine("ready");
+      for (;;) {
+        const r = await fetch(`/api/call/${token}/line`)
+          .then((x) => x.json())
+          .catch(() => ({}));
+        if (r.go) break;
+        await new Promise((res) => setTimeout(res, 400));
+      }
+    }
     if (LINE) onLine("talking");
     ctx = ctx || new (window.AudioContext || window.webkitAudioContext)();
     if (ctx.state === "suspended") await ctx.resume();
     box.innerHTML = `<div><div class="avatar ring">N</div><h1>Nigoh</h1></div><div class="qtext">${esc(info.greeting)}</div><div class="ai-note">${t.ai}</div>`;
+    if (LINE) onLine("speaking: greeting");
     await play("greeting", info.greeting);
+    if (LINE) onLine("spoken: greeting");
     await say("hint");
     let human = null,
       acks = 0;

@@ -126,11 +126,33 @@ class Rig:
                 f"--user-data-dir={os.path.join(HERE, 'browser-profile')}",
                 "--autoplay-policy=no-user-gesture-required",  # the page speaks without anyone clicking
                 "--use-fake-ui-for-media-stream",  # ...and listens without a permission prompt
+                # nobody watches this window: it must keep working behind others and with the display asleep
+                "--disable-features=CalculateNativeWinOcclusion",
+                "--disable-backgrounding-occluded-windows",
+                "--disable-renderer-backgrounding",
+                "--disable-background-timer-throttling",
+                "--hide-crash-restore-bubble",
                 "--no-first-run",
                 "--no-default-browser-check",
                 "--window-size=440,760",
             ]
         )
+
+    def close(self, page):
+        """Close the call window: ask first, so the browser does not think it crashed."""
+        if not page:
+            return
+        subprocess.run(["taskkill", "/PID", str(page.pid), "/T"], capture_output=True)
+        try:
+            page.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            subprocess.run(["taskkill", "/PID", str(page.pid), "/T", "/F"], capture_output=True)
+
+    def page_state(self, token):
+        try:
+            return self.http("GET", f"/api/gateway/state?token={token}").get("state")
+        except Exception:
+            return None
 
     def ring(self, job):
         token, phone = job["token"], job["phone"]
@@ -138,36 +160,40 @@ class Rig:
         self.adb("shell", "input", "keyevent", "KEYCODE_WAKEUP")
         self.adb("shell", "am", "start", "-a", "android.intent.action.CALL", "-d", f"tel:{phone}")
         self.report(token, "dialing")
-        started, seen_out = time.time(), False
-        while True:  # wait for the person to pick up
-            time.sleep(1)
-            state = "talking" if self.a.dry_run and time.time() - started > 2 else self.line_state()
-            if state == "talking":
-                break
-            seen_out = seen_out or state == "ringing-out"
-            waited = time.time() - started
-            if (state == "idle" and (seen_out or waited > 8)) or waited > self.a.ring_seconds:
-                self.hang_up()
-                say("   nobody picked up")
-                return self.report(token, "noanswer")
-        say("   picked up")
-        if self.a.speaker and not self.a.dry_run:
-            time.sleep(0.7)
-            say("   loudspeaker:", "on" if self.loudspeaker() else "button not found - tap it on the phone")
-        url = f"{self.a.server.rstrip('/')}/call/{token}?line=1" + (f"&{self.a.page}" if self.a.page else "")
+        # The call window opens now, while the phone is still ringing, gets its microphone and speaker ready
+        # and waits: the first word is then spoken the moment the person picks up.
+        url = f"{self.a.server.rstrip('/')}/call/{token}?line=1&hold=1" + (f"&{self.a.page}" if self.a.page else "")
         page = None if self.a.dry_run else self.browser(url)
-        started = time.time()
         try:
+            started, seen_out, ready = time.time(), False, False
+            while True:  # wait for the person to pick up
+                time.sleep(1)
+                state = "talking" if self.a.dry_run and time.time() - started > 2 else self.line_state()
+                if not ready and not self.a.dry_run and self.page_state(token) == "ready":
+                    ready = True
+                    say("   the call window is ready")
+                if state == "talking":
+                    break
+                seen_out = seen_out or state == "ringing-out"
+                waited = time.time() - started
+                if (state == "idle" and (seen_out or waited > 8)) or waited > self.a.ring_seconds:
+                    say("   nobody picked up")
+                    self.hang_up()
+                    return self.report(token, "noanswer")
+            say("   picked up")
+            if self.a.speaker and not self.a.dry_run:
+                say("   loudspeaker:", "on" if self.loudspeaker() else "button not found - tap it on the phone")
+            self.report(token, "go")  # the call window starts speaking
+            started, last = time.time(), "ready" if ready else None
             while time.time() - started < self.a.talk_seconds:
                 time.sleep(1)
                 if self.a.dry_run and time.time() - started > 3:
                     break
-                try:
-                    state = self.http("GET", f"/api/gateway/state?token={token}").get("state")
-                except Exception:
-                    state = None
+                state = self.page_state(token)
+                if state and state != last:
+                    last = state
+                    say("   call window:", state)
                 if state in ("done", "nomic"):
-                    say("   the page finished" if state == "done" else "   the browser found no microphone")
                     time.sleep(1.5)  # let the last word leave the speaker
                     break
                 if not self.a.dry_run and self.line_state() == "idle":
@@ -175,8 +201,7 @@ class Rig:
                     break
         finally:
             self.hang_up()
-            if page:
-                subprocess.run(["taskkill", "/PID", str(page.pid), "/T", "/F"], capture_output=True)
+            self.close(page)
             self.report(token, "ended")
             say("   call over")
 

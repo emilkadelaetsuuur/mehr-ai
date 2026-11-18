@@ -570,10 +570,15 @@ def test_a_phone_with_a_sim_card_as_the_line(monkeypatch):
         assert c.post(f"/api/calls/{k['id']}/sim", json={"phone": "93 555-66-77"}).json() == {"queued": True, "to": "+998935556677"}
         job = c.get("/api/gateway/next", headers=rig).json()["call"]
         assert job == {"token": k["token"], "phone": "+998935556677", "lang": "uz"} and c.get("/api/gateway/next", headers=rig).json()["call"] is None
-        c.post(f"/api/call/{k['token']}/line", data={"state": "talking"})  # the call page, opened when she picked up
-        assert c.get("/api/gateway/state", params={"token": k["token"]}, headers=rig).json() == {"state": "talking"}
+        # The call page is opened while the phone still rings: it gets ready and waits for the pick-up.
+        c.post(f"/api/call/{k['token']}/line", data={"state": "ready"})
+        assert c.get(f"/api/call/{k['token']}/line").json() == {"go": False}
+        c.post("/api/gateway/report", json={"token": k["token"], "state": "go"}, headers=rig)  # she picked up
+        assert c.get(f"/api/call/{k['token']}/line").json() == {"go": True}
+        c.post(f"/api/call/{k['token']}/line", data={"state": "talking"})
+        assert c.get("/api/gateway/state", params={"token": k["token"]}, headers=rig).json() == {"state": "talking", "rig": "go"}
         c.post(f"/api/call/{k['token']}/line", data={"state": "done"})
-        assert c.get("/api/gateway/state", params={"token": k["token"]}, headers=rig).json() == {"state": "done"}
+        assert c.get("/api/gateway/state", params={"token": k["token"]}, headers=rig).json()["state"] == "done"
         for _ in range(3):  # nobody picks up, three times
             c.post("/api/gateway/report", json={"token": k["token"], "state": "noanswer"}, headers=rig)
         assert next(x for x in c.get("/api/calls").json() if x["id"] == k["id"])["status"] == "javobsiz"

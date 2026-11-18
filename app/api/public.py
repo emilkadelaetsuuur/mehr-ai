@@ -1,5 +1,7 @@
 """Patient side of an AI call. No login: the only key is an unguessable token in the link."""
 
+import logging
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
@@ -10,6 +12,7 @@ from ..db import Call
 from .deps import db_session
 
 router = APIRouter(prefix="/api/call")
+log = logging.getLogger("nigoh.line")
 MAX_ANSWER = 3 * 1024 * 1024
 MAX_APPEAL = 8 * 1024 * 1024
 BUTTON = {"yes": "ha (tugma)", "no": "yo'q (tugma)"}
@@ -179,9 +182,17 @@ def finish(token: str, quiet: int = 0, db=Depends(db_session)):
 def line(token: str, state: str = Form(...), db=Depends(db_session)):
     """The call page in line mode says where it is: the rig hangs up only after the last word is spoken."""
     get_call(db, token)
-    if state in ("talking", "done", "nomic"):
-        simline.report(token, state)
+    log.info("line %s: page %s", token[:4], state[:60])  # every step of a call on the line is worth a line in the log
+    if state in ("ready", "talking", "done", "nomic"):
+        simline.report(token, state, "page")
     return {"ok": True}
+
+
+@router.get("/{token}/line")
+def line_go(token: str, db=Depends(db_session)):
+    """The call page, opened while the phone is still ringing, asks whether the person has picked up."""
+    get_call(db, token)
+    return {"go": simline.state(token, "rig") == "go"}
 
 
 @router.post("/{token}/noanswer")

@@ -24,7 +24,7 @@ def next_call():
 
 @router.get("/state", dependencies=[Depends(rig)])
 def line_state(token: str):
-    return {"state": simline.state(token)}
+    return {"state": simline.state(token), "rig": simline.state(token, "rig")}
 
 
 @router.post("/report", dependencies=[Depends(rig)])

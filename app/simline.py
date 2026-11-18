@@ -19,7 +19,7 @@ from . import config
 
 _queue = deque()  # calls waiting to be rung: {"token", "phone", "lang"}
 _seen = {"at": 0.0}  # when the rig last asked for work
-_state = {}  # call token -> the last thing reported about that call on the line
+_state = {}  # call token -> {"rig": where the phone is, "page": where the call page is}
 
 
 def enabled():
@@ -38,7 +38,7 @@ def allowed(key):
 def ask(call, phone):
     """Put a call in the queue for the rig."""
     _queue.append({"token": call.token, "phone": phone, "lang": call.lang or "uz"})
-    _state[call.token] = "navbatda"
+    _state[call.token] = {"rig": "navbatda"}
 
 
 def take():
@@ -47,9 +47,11 @@ def take():
     return _queue.popleft() if _queue else None
 
 
-def report(token, state):
-    _state[token] = state[:20]
+def report(token, state, who="rig"):
+    """The rig says where the phone is (dialing, go, noanswer, ended); the call page says where it is
+    (ready, talking, done, nomic). The page starts speaking when the rig says "go": the person picked up."""
+    _state.setdefault(token, {})[who] = state[:20]
 
 
-def state(token):
-    return _state.get(token)
+def state(token, who="page"):
+    return _state.get(token, {}).get(who)
