@@ -27,7 +27,8 @@ def _invalidate(_session):
 
 
 @router.get("/health")
-def health():
+async def health():
+    """Answered by the event loop itself: it tells the truth even when every worker thread is busy."""
     return {"ok": True}
 
 

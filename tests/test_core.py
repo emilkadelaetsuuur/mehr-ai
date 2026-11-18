@@ -738,6 +738,8 @@ def test_a_runaway_tab_is_told_to_sign_in_again(monkeypatch):
         assert codes[: main.RUNAWAY] == [200] * main.RUNAWAY and codes[-1] == 401
         assert c.get("/api/calls").json() == {"detail": "reload"}
         assert c.get("/api/tasks").status_code == 200 and c.get("/api/me").status_code == 200  # only the flooded list is closed
+        card = f"/api/patients/{c.get('/api/patients').json()[0]['id']}"  # a card is guarded like a list: an old tab can be left on one
+        assert [c.get(card).status_code for _ in range(main.RUNAWAY + 2)][-1] == 401
 
 
 def test_dmed_reports_a_hospital_stay_and_gets_the_call_back(monkeypatch):

@@ -12,7 +12,8 @@ if config.DATABASE_URL.startswith("sqlite"):
     os.makedirs(config.DATA_DIR, exist_ok=True)
     engine = create_engine(config.DATABASE_URL, connect_args={"check_same_thread": False})
 else:
-    engine = create_engine(config.DATABASE_URL, pool_pre_ping=True)
+    # as many connections as there are worker threads: a burst of requests must queue for a thread, not time out on the pool
+    engine = create_engine(config.DATABASE_URL, pool_pre_ping=True, pool_size=20, max_overflow=20, pool_timeout=10)
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
 Base = declarative_base()

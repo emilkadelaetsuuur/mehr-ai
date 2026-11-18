@@ -38,7 +38,6 @@ BUILD = _build()
 # ask thousands of times a minute: its refresh timers piled up (fixed since, but a tab that was never
 # reloaded keeps the old code). Such a tab is told to sign in again. The interface, old or new, answers that
 # by dropping all its timers and showing the sign-in form, so the flood stops and a reload brings the new code.
-LISTS = ("/api/calls", "/api/patients", "/api/dashboard", "/api/tasks")
 RUNAWAY, WINDOW = 40, 10  # more than this many requests for one list from one browser within these seconds...
 CLOSED = 60  # ...closes that list to that browser for this long
 _asked = {}  # (browser, list) -> [when the count began, how many since, closed until]
@@ -115,7 +114,8 @@ async def session_guard(request: Request, call_next):
     guarded = config.DEMO_PASSWORD and path.startswith("/api/") and not path.startswith(OPEN_PATHS)
     if guarded and request.state.uid is None:
         return JSONResponse({"detail": "auth"}, status_code=401)
-    if guarded and request.method == "GET" and path in LISTS and runaway((request.cookies.get(auth.COOKIE, ""), path)):
+    # every address a screen reads, not only the lists: an old tab left on a patient's card floods the card
+    if guarded and request.method == "GET" and runaway((request.cookies.get(auth.COOKIE, ""), path)):
         return JSONResponse({"detail": "reload"}, status_code=401)
     resp = await call_next(request)
     if path.endswith((".html", ".js", ".css")) or path == "/" or path.startswith("/call/"):

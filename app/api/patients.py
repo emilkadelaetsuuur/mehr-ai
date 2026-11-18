@@ -91,59 +91,66 @@ def confirm(body: ConfirmIn, db=Depends(db_session), u=Depends(current_user)):
 
 @router.get("/{pid}")
 def patient_card(pid: int, db=Depends(db_session), u=Depends(current_user)):
-    p = get_patient(db, pid)
-    hide = masked(p, u)  # a confidential diagnosis is for the specialist, the head and her own doctor only
-    ages = vaccines.AGES
-    data, prev, _ = core.merged(p)
-    age = (core.now().year - p.birth_year) if p.birth_year and p.kind != "chaqaloq" else None
-    mother = db.get(Patient, p.mother_id) if p.mother_id else None
-    kids = db.query(Patient).filter(Patient.mother_id == p.id).all()
-    return {
-        **brief(p, u),
-        "reasons": p.reasons or [],
-        "diagnosis": None if hide else p.diagnosis,
-        "icd10": None if hide else p.icd10,
-        "pinfl": p.pinfl,
-        "parity": p.parity,
-        "scenarios": [s for s in core.SCENARIOS if s != "tashrif_tasdiq" and core.fits(p, s)],  # the calls that may be made to this patient
-        "stays": [
-            {
-                "id": s.id,
-                "hospital": s.hospital,
-                "emergency": s.emergency,
-                "brought_by": s.brought_by,
-                "reason": None if hide else s.reason,
-                "icd10": None if hide else s.icd10,
-                "diagnosis": None if hide else s.diagnosis,
-                "advice": None if hide else s.advice,
-                "admitted_at": iso(s.admitted_at),
-                "discharged_at": iso(s.discharged_at),
-            }
-            for s in sorted(p.stays, key=lambda s: s.admitted_at or s.created_at, reverse=True)
-        ],
-        "vaccines": [{**d, "due_at": iso(d["due_at"]), "done_at": iso(d["done_at"]), "label": ages[d["age"]]["label"]} for d in vaccines.plan(p, core.now())],
-        "dmed": [
-            {"direction": m.direction, "kind": m.kind, "summary": m.summary, "status": m.status, "at": iso(m.created_at)}
-            for m in db.query(DmedMessage).filter(DmedMessage.patient_id == p.id).order_by(DmedMessage.id.desc()).limit(12)
-        ],
-        "discharged_at": iso(p.discharged_at),
-        "values": data,
-        "prev": prev,
-        "summary": {"uz": core.summary(p, "uz"), "ru": core.summary(p, "ru")},
-        "ml": ml.predict(age, data) if p.kind != "chaqaloq" else None,
-        "mother": brief(mother) if mother else None,
-        "children": [brief(k) for k in kids],
-        "observations": [
-            {"id": o.id, "source": o.source, "data": o.data, "quotes": o.quotes, "text": o.text, "author": o.author, "at": iso(o.created_at)}
-            for o in sorted(p.observations, key=lambda o: o.created_at, reverse=True)[:30]
-        ],
-        "tasks": [task_json(t) for t in sorted(p.tasks, key=lambda t: t.created_at, reverse=True)],
-        "calls": [call_json(c) for c in sorted(p.calls, key=lambda c: c.planned_at, reverse=True)],
-        "audit": [
-            {"at": iso(a.at), "role": a.role, "actor": a.actor, "action": a.action, "detail": a.detail}
-            for a in db.query(AuditLog).filter(AuditLog.patient_id == p.id).order_by(AuditLog.id.desc()).limit(12)
-        ],
-    }
+    """The patient's card, as this viewer may see it. Built once for all who look at it within a few seconds."""
+
+    def build():
+        p = get_patient(db, pid)
+        hide = masked(p, u)  # a confidential diagnosis is for the specialist, the head and her own doctor only
+        ages = vaccines.AGES
+        data, prev, _ = core.merged(p)
+        age = (core.now().year - p.birth_year) if p.birth_year and p.kind != "chaqaloq" else None
+        mother = db.get(Patient, p.mother_id) if p.mother_id else None
+        kids = db.query(Patient).filter(Patient.mother_id == p.id).all()
+        return {
+            **brief(p, u),
+            "reasons": p.reasons or [],
+            "diagnosis": None if hide else p.diagnosis,
+            "icd10": None if hide else p.icd10,
+            "pinfl": p.pinfl,
+            "parity": p.parity,
+            "scenarios": [s for s in core.SCENARIOS if s != "tashrif_tasdiq" and core.fits(p, s)],  # the calls that may be made to this patient
+            "stays": [
+                {
+                    "id": s.id,
+                    "hospital": s.hospital,
+                    "emergency": s.emergency,
+                    "brought_by": s.brought_by,
+                    "reason": None if hide else s.reason,
+                    "icd10": None if hide else s.icd10,
+                    "diagnosis": None if hide else s.diagnosis,
+                    "advice": None if hide else s.advice,
+                    "admitted_at": iso(s.admitted_at),
+                    "discharged_at": iso(s.discharged_at),
+                }
+                for s in sorted(p.stays, key=lambda s: s.admitted_at or s.created_at, reverse=True)
+            ],
+            "vaccines": [
+                {**d, "due_at": iso(d["due_at"]), "done_at": iso(d["done_at"]), "label": ages[d["age"]]["label"]} for d in vaccines.plan(p, core.now())
+            ],
+            "dmed": [
+                {"direction": m.direction, "kind": m.kind, "summary": m.summary, "status": m.status, "at": iso(m.created_at)}
+                for m in db.query(DmedMessage).filter(DmedMessage.patient_id == p.id).order_by(DmedMessage.id.desc()).limit(12)
+            ],
+            "discharged_at": iso(p.discharged_at),
+            "values": data,
+            "prev": prev,
+            "summary": {"uz": core.summary(p, "uz"), "ru": core.summary(p, "ru")},
+            "ml": ml.predict(age, data) if p.kind != "chaqaloq" else None,
+            "mother": brief(mother) if mother else None,
+            "children": [brief(k) for k in kids],
+            "observations": [
+                {"id": o.id, "source": o.source, "data": o.data, "quotes": o.quotes, "text": o.text, "author": o.author, "at": iso(o.created_at)}
+                for o in sorted(p.observations, key=lambda o: o.created_at, reverse=True)[:30]
+            ],
+            "tasks": [task_json(t) for t in sorted(p.tasks, key=lambda t: t.created_at, reverse=True)],
+            "calls": [call_json(c) for c in sorted(p.calls, key=lambda c: c.planned_at, reverse=True)],
+            "audit": [
+                {"at": iso(a.at), "role": a.role, "actor": a.actor, "action": a.action, "detail": a.detail}
+                for a in db.query(AuditLog).filter(AuditLog.patient_id == p.id).order_by(AuditLog.id.desc()).limit(12)
+            ],
+        }
+
+    return snapshot(("card", pid, u.role, u.doctor_name), build)
 
 
 @router.post("/{pid}/observations")
