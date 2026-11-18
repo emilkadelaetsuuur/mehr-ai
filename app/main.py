@@ -9,7 +9,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from . import auth, config, core, ml, seed, telegram, voicelab
+from . import auth, closing, config, core, ml, seed, telegram, voicelab
 from .api import patients, public, system, tel, voice, work
 from .db import Patient, SessionLocal, init_db
 
@@ -36,6 +36,8 @@ def warm_speech():
     for sc in core.SCENARIOS.values():
         for text in [sc["greeting"]["uz"], sc["closing_ok"]["uz"], sc["closing_alert"]["uz"]] + [q["uz"] for q in sc["questions"]]:
             voicelab.tts(text, "uz")
+    for lang, text in closing.BRIDGE.items():
+        voicelab.tts(text, lang)
 
 
 @asynccontextmanager

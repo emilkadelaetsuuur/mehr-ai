@@ -10,8 +10,10 @@ import hashlib
 import json
 import logging
 import os
+import threading
 import time
 import uuid
+from collections import defaultdict
 
 import httpx
 
@@ -20,6 +22,7 @@ from . import config
 log = logging.getLogger("nigoh.voicelab")
 BASE = config.VOICELAB_BASE
 _state = {"voices": {}, "model": None, "checked": False, "error": None}
+_speaking = defaultdict(threading.Lock)  # one synthesis per phrase at a time
 
 
 def enabled():
@@ -152,34 +155,35 @@ def tts(text, lang="uz", speed=1.0):
     os.makedirs(cache_dir, exist_ok=True)
     key = hashlib.sha1(f"{voice}|{lang}|{speed}|{text}".encode()).hexdigest()
     path = os.path.join(cache_dir, key + ".wav")
-    if os.path.exists(path) and os.path.getsize(path) > 1000:
-        with open(path, "rb") as f:
-            return f.read()
-    body = {"text": text[:4900], "language": lang, "voice_id": voice, "speed": speed}
-    if config.VOICELAB_TTS_MODEL:
-        body["model_id"] = config.VOICELAB_TTS_MODEL
-    try:
-        with httpx.Client(timeout=90) as c:
-            r = c.post(f"{BASE}/v1/tts", headers=_headers({"Idempotency-Key": "nigoh-" + key[:40]}), json=body)
-            audio = None
-            if r.status_code == 200 and r.headers.get("content-type", "").startswith("audio"):
-                audio = r.content
-            elif r.status_code in (200, 202):
-                gid = r.json().get("id")
-                for _ in range(60):
-                    time.sleep(1)
-                    g = c.get(f"{BASE}/v1/tts/generations/{gid}", headers=_headers()).json()
-                    if g.get("status") == "completed" and g.get("audio_url"):
-                        audio = httpx.get(g["audio_url"], timeout=60).content
-                        break
-                    if g.get("status") == "failed":
-                        break
-            else:
-                log.warning("tts %s %s", r.status_code, r.text[:300])
-            if audio and len(audio) > 1000:
-                with open(path, "wb") as f:
-                    f.write(audio)
-                return audio
-    except Exception as e:
-        log.warning("tts failed: %s", e)
+    with _speaking[key]:  # a second request for the same new phrase waits and then reads the cache
+        if os.path.exists(path) and os.path.getsize(path) > 1000:
+            with open(path, "rb") as f:
+                return f.read()
+        body = {"text": text[:4900], "language": lang, "voice_id": voice, "speed": speed}
+        if config.VOICELAB_TTS_MODEL:
+            body["model_id"] = config.VOICELAB_TTS_MODEL
+        try:
+            with httpx.Client(timeout=90) as c:
+                r = c.post(f"{BASE}/v1/tts", headers=_headers({"Idempotency-Key": "nigoh-" + key[:40]}), json=body)
+                audio = None
+                if r.status_code == 200 and r.headers.get("content-type", "").startswith("audio"):
+                    audio = r.content
+                elif r.status_code in (200, 202):
+                    gid = r.json().get("id")
+                    for _ in range(60):
+                        time.sleep(1)
+                        g = c.get(f"{BASE}/v1/tts/generations/{gid}", headers=_headers()).json()
+                        if g.get("status") == "completed" and g.get("audio_url"):
+                            audio = httpx.get(g["audio_url"], timeout=60).content
+                            break
+                        if g.get("status") == "failed":
+                            break
+                else:
+                    log.warning("tts %s %s", r.status_code, r.text[:300])
+                if audio and len(audio) > 1000:
+                    with open(path, "wb") as f:
+                        f.write(audio)
+                    return audio
+        except Exception as e:
+            log.warning("tts failed: %s", e)
     return None

@@ -262,7 +262,7 @@ def test_closing_writer_follows_the_language_setting(monkeypatch):
     monkeypatch.setattr(config, "CLAUDE_LANGS", ["ru"])
     monkeypatch.setattr(closing, "ask", lambda text: ru)
     monkeypatch.setattr(voicelab, "chat", lambda messages, **kw: uz)
-    assert [n for n, _ in closing.writers("uz")] == ["voicelab"] and [n for n, _ in closing.writers("ru")] == ["claude", "voicelab"]
+    assert [w[0] for w in closing.writers("uz")] == ["voicelab"] and [w[0] for w in closing.writers("ru")] == ["claude", "voicelab"]
     assert closing.compose(call("uz"), res) == (uz, "voicelab")
     assert closing.compose(call("ru"), res) == (ru, "claude")
     monkeypatch.setattr(closing, "ask", lambda text: None)  # Claude is late or declined: the next writer is asked
@@ -270,6 +270,32 @@ def test_closing_writer_follows_the_language_setting(monkeypatch):
     assert closing.compose(call("ru"), res) == (ru, "voicelab")
     monkeypatch.setattr(voicelab, "chat", lambda messages, **kw: "Hammasi yaxshi.")  # fails the checks
     assert closing.compose(call("uz"), res) == (core.SCENARIOS["homilador"]["closing_alert"]["uz"], "shablon")
+
+
+def test_a_slow_writer_cannot_hold_the_caller(monkeypatch):
+    """A writer gets a fixed time by the clock; when it is late the next one is asked, and at the end the fixed phrase."""
+    import time
+    from types import SimpleNamespace
+
+    from app import closing, config, core, voicelab
+
+    ru = "Вы сказали о сильной головной боли. Пожалуйста, сразу позвоните по номеру сто три. Вашему врачу отправлено срочное сообщение."
+    call = SimpleNamespace(scenario="homilador", lang="ru", flags=["kuchli_bosh_ogrigi"], answers={"bosh": {"value": "yes", "transcript": "Да."}})
+    res = {"alert": True, "verified": None}
+    monkeypatch.setattr(closing, "enabled", lambda: True)
+    monkeypatch.setattr(voicelab, "enabled", lambda: True)
+    monkeypatch.setattr(config, "CLAUDE_TIMEOUT", 0.3)
+    monkeypatch.setattr(config, "VOICELAB_CLOSING_TIMEOUT", 0.3)
+    monkeypatch.setattr(closing, "ask", lambda text: time.sleep(2) or ru)  # a gateway that keeps the connection open
+    monkeypatch.setattr(voicelab, "chat", lambda messages, **kw: ru)
+    t0 = time.time()
+    assert closing.compose(call, res) == (ru, "voicelab") and time.time() - t0 < 1.5
+    monkeypatch.setattr(voicelab, "chat", lambda messages, **kw: time.sleep(2) or ru)
+    t0 = time.time()
+    assert closing.compose(call, res) == (core.SCENARIOS["homilador"]["closing_alert"]["ru"], "shablon") and time.time() - t0 < 1.5
+
+    assert closing.sentences("Rahmat sizga katta. Javoblaringiz yuborildi! Ha.") == ["Rahmat sizga katta.", "Javoblaringiz yuborildi! Ha."]
+    assert closing.sentences("") == [] and closing.sentences(None) == []
 
 
 def test_claude_request_fits_a_gateway(monkeypatch):

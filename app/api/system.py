@@ -98,7 +98,7 @@ def meta(db=Depends(db_session)):
         "auth": bool(config.DEMO_PASSWORD),
         "voicelab": voicelab.status(),
         "telephony": telephony.enabled(),
-        "closing": {lang: [name for name, _ in closing.writers(lang)] for lang in ("uz", "ru")},
+        "closing": {lang: [w[0] for w in closing.writers(lang)] for lang in ("uz", "ru")},
         "claude": {"enabled": closing.enabled(), "model": config.CLAUDE_MODEL},
         "ml": ml.metrics(),
         "rules": rules.T,

@@ -16,13 +16,18 @@ scenario and the answers given in this call.
 import logging
 import os
 import re
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as Late
 
 from . import config, core, rules, voicelab
 
 log = logging.getLogger("nigoh.closing")
 _state = {"client": None, "plain": False}
+_pool = ThreadPoolExecutor(max_workers=6, thread_name_prefix="closing")
 
 EMERGENCY = {"uz": "bir yuz uch", "ru": "сто три"}  # 103 in words: the speech engine reads words, not digits
+# Spoken while the closing is being written, so the caller hears a voice instead of silence.
+BRIDGE = {"uz": "Rahmat! Javoblaringizni ko'rib chiqyapman, bir oz kutib turing.", "ru": "Спасибо! Смотрю ваши ответы, одну минуту."}
 LANGUAGE = {"uz": "Uzbek, Latin script", "ru": "Russian"}
 ANSWER = {"yes": "yes", "no": "no", "unclear": "not understood", None: "no answer"}
 
@@ -35,7 +40,8 @@ A rules engine has already decided the outcome of the call, following the clinic
 decide or re-assess it; you put it into words for this particular person. You receive the language, the \
 questions with her answers, the warning signs the rules found, the outcome, and what the system has done.
 
-Write two or three short sentences in the requested language:
+Write two short sentences, or three for an alarm, in the requested language. She is waiting on the line, so \
+every extra word is a delay:
 - Refer to what she actually said, so the ending fits this call. If she reported warning signs, name them. \
 If she reported none, say that in one short phrase and do not read the list of signs back to her: she has \
 just heard it. Use everyday words a village mother would use, not clinical terms.
@@ -55,7 +61,7 @@ diagnosis or treatment advice, because a wrong word from a machine can do harm. 
 no medicines or home remedies, no guesses about causes, no new questions, and nothing that was not in the \
 request. Say only what the system has really done.
 
-Format: plain sentences only, at most sixty words. Write every number in words, no digits. No lists, no \
+Format: plain sentences only, at most forty words in all. Write every number in words, no digits. No lists, no \
 quotation marks, no emoji, no greeting, no signature. Reply with the closing words and nothing else."""
 
 
@@ -179,21 +185,37 @@ def ask_voicelab(text):
 
 
 def writers(lang):
-    """Who may word a closing in this language, in the order they are tried: [(name, function)]."""
+    """Who may word a closing in this language, in the order they are tried: [(name, function, seconds allowed)]."""
     out = []
     if enabled() and lang in config.CLAUDE_LANGS:
-        out.append(("claude", ask))
+        out.append(("claude", ask, config.CLAUDE_TIMEOUT))
     if config.VOICELAB_CLOSING and voicelab.enabled():
-        out.append(("voicelab", ask_voicelab))
+        out.append(("voicelab", ask_voicelab, config.VOICELAB_CLOSING_TIMEOUT))
+    return out
+
+
+def sentences(text):
+    """A closing split into sentences: each is turned into speech on its own, so the first is heard sooner."""
+    out = []
+    for part in re.split(r"(?<=[.!?…])\s+", text or ""):
+        part = part.strip()
+        if part and out and len(part) < 20:
+            out[-1] += " " + part  # a two-word tail is not worth a separate clip
+        elif part:
+            out.append(part)
     return out
 
 
 def compose(call, res):
     """Closing words for a finished call and who wrote them: 'claude', 'voicelab', or 'shablon' for the fixed phrase."""
     lang = call.lang or "uz"
-    for name, write in writers(lang):
+    for name, write, seconds in writers(lang):
         try:
-            text = write(brief(call, res))
+            # A caller is on the line: the writer gets this long by the clock, whatever its own network timeouts do.
+            text = _pool.submit(write, brief(call, res)).result(timeout=seconds)
+        except Late:
+            log.warning("%s: no closing within %gs", name, seconds)
+            continue
         except ImportError:
             log.warning("%s: the anthropic package is not installed", name)
             continue

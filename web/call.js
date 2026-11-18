@@ -214,14 +214,23 @@
     await play("greeting", info.greeting);
     for (let i = 0; i < info.questions.length; i++) await ask(info.questions[i], i);
     box.innerHTML = `<div><div class="avatar">N</div></div><div class="qtext">${t.proc}</div><div></div>`;
-    await Promise.all(pending);
-    const res = await fetch(`/api/call/${token}/finish`, { method: "POST" })
+    const audio = (part) => `/api/call/${token}/audio/${part}`;
+    const finished = Promise.all(pending)
+      .then(() => fetch(`/api/call/${token}/finish`, { method: "POST" }))
       .then((r) => r.json())
       .catch(() => ({}));
+    // While the closing words are being written the caller hears a short "one moment" instead of silence.
+    if (info.bridge && info.tts) await play("bridge", info.bridge);
+    const res = await finished;
     const fixed = res.alert || res.verified === false ? "closing_alert" : "closing_ok";
     const text = res.closing || info[fixed];
+    const parts = res.closing_parts && res.closing_parts.length ? res.closing_parts : null;
     box.innerHTML = `<div><div class="avatar">${res.alert ? "!" : "✓"}</div><h1>${t.done}</h1></div><div class="qtext">${esc(text)}</div><div class="ai-note">${t.ai}</div>`;
-    await play(res.closing ? "closing" : fixed, text);
+    if (parts && info.tts) {
+      // Written closings are spoken sentence by sentence: the later ones are synthesised while the first plays.
+      parts.slice(1).forEach((_, i) => fetch(audio(`closing?i=${i + 1}`)).catch(() => {}));
+      for (let i = 0; i < parts.length; i++) await play(`closing?i=${i}`, parts[i]);
+    } else await play(res.closing ? "closing" : fixed, text);
     stream && stream.getTracks().forEach((x) => x.stop());
   }
 

@@ -38,15 +38,27 @@ def info(token: str, db=Depends(db_session)):
         "questions": [{"id": q["id"], "text": q[lang], "type": q["type"]} for q in sc["questions"]],
         "closing_ok": sc["closing_ok"][lang],
         "closing_alert": sc["closing_alert"][lang],
+        # spoken while the closing is being written; absent when the fixed phrase is used and nothing has to be waited for
+        "bridge": closing.BRIDGE.get(lang) if closing.writers(lang) else None,
         "tts": voicelab.enabled(),
     }
 
 
 @router.get("/{token}/audio/{part}")
-def audio(token: str, part: str, db=Depends(db_session)):
+def audio(token: str, part: str, i: int | None = None, db=Depends(db_session)):
+    """Speech for one part of the call. `closing` with `i` is one sentence of the closing words."""
     c = get_call(db, token)
-    text = c.closing if part == "closing" else phrase(core.SCENARIOS[c.scenario], part, c.lang or "uz")
-    wav = voicelab.tts(text, c.lang or "uz") if text else None
+    lang = c.lang or "uz"
+    if part == "bridge":
+        text = closing.BRIDGE.get(lang)
+    elif part == "closing" and i is not None:
+        parts = closing.sentences(c.closing)
+        text = parts[i] if 0 <= i < len(parts) else None
+    elif part == "closing":
+        text = c.closing
+    else:
+        text = phrase(core.SCENARIOS[c.scenario], part, lang)
+    wav = voicelab.tts(text, lang) if text else None
     if not wav:
         raise HTTPException(404, "no audio")
     return Response(wav, media_type="audio/wav", headers={"Cache-Control": "public, max-age=86400"})
@@ -91,10 +103,11 @@ def finish(token: str, db=Depends(db_session)):
     if c.status == "tugadi":
         return {"alert": False, "done": True, "closing": c.closing}
     res = core.finish_call(db, c)
-    c.closing, c.closing_by = closing.compose(c, res)  # Claude's wording when available, else the scenario's phrase
+    c.closing, c.closing_by = closing.compose(c, res)  # a language model's wording when available, else the scenario's phrase
     core.audit(db, "bemor", "call_finished", c.patient, f"{c.scenario}: {', '.join(c.flags) or 'belgi yo`q'}")
     db.commit()
-    return {**res, "closing": c.closing}
+    # A written closing is spoken sentence by sentence; the fixed phrase is one clip that is already cached.
+    return {**res, "closing": c.closing, "closing_parts": closing.sentences(c.closing) if c.closing_by != "shablon" else None}
 
 
 @router.post("/{token}/noanswer")
