@@ -12,7 +12,7 @@ from xml.sax.saxutils import escape
 
 import httpx
 
-from . import config, core, extract, voicelab
+from . import closing, config, core, extract, voicelab
 
 
 def enabled():
@@ -87,6 +87,6 @@ def take_answer(db, call, i, recording_url):
         db.commit()
         return step_twiml(call, i + 1)
     res = core.finish_call(db, call)
+    call.closing, call.closing_by = closing.compose(call, res)
     db.commit()
-    closing = "closing_alert" if res["alert"] or res["verified"] is False else "closing_ok"
-    return f"<Response>{_play(call.token, closing)}<Hangup/></Response>"
+    return f"<Response>{_play(call.token, 'closing')}<Hangup/></Response>"

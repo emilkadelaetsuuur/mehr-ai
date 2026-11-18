@@ -11,7 +11,7 @@ os.environ["DEMO_PASSWORD"] = ""
 # The suite also runs inside the production container: it must not inherit that environment
 # (an https PUBLIC_URL makes the session cookie Secure; real tokens would reach real services).
 os.environ["PUBLIC_URL"] = "http://testserver"
-for _k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM"):
+for _k in ("TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID", "TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM", "ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN"):
     os.environ[_k] = ""
 
 from fastapi.testclient import TestClient  # noqa: E402
@@ -180,6 +180,65 @@ def test_symptom_calls_alarm_only_on_yes():
         assert again["zone"] == "red" and not again["alert"]
         visit = ring("tashrif_tasdiq", "yes")
         assert visit["verified"] is True and not visit["alert"]  # a confirmed visit of a red-zone patient is not an alarm
+
+
+def test_closing_words_come_from_claude_only_when_they_pass_the_checks(monkeypatch):
+    """The rules decide the outcome; Claude may only word it. Whatever fails the checks is replaced by the fixed phrase."""
+    from app import closing, core
+
+    fixed_alarm = core.SCENARIOS["homilador"]["closing_alert"]["uz"]
+    good = (
+        "Siz bosh og'rig'i va qon ketishi haqida aytdingiz. Iltimos, hoziroq bir yuz uch raqamiga qo'ng'iroq qiling. "
+        "Shifokoringizga shoshilinch xabar yuborildi."
+    )
+    assert closing.acceptable(good, "uz", alarm=True) is None
+    assert closing.acceptable(good.replace("bir yuz uch", "tez yordam"), "uz", alarm=True) == "no emergency number"
+    assert closing.acceptable(good.replace("bir yuz uch", "103"), "uz", alarm=True) == "digits"
+    assert closing.acceptable("Вы сказали о головной боли, позвоните сто три прямо сейчас.", "uz", alarm=True) == "language"
+    assert closing.acceptable("Rahmat.", "uz", alarm=False) == "length"
+
+    with TestClient(app) as c:
+        p = c.post(
+            "/api/patients/confirm",
+            json={
+                "fields": {"full_name": "Yakun Sinov", "birth_year": 1995, "kind": "homilador", "phone": "+998 90 000-11-22", "mahalla": "Guliston"},
+                "consent": True,
+            },
+        ).json()
+
+        def ring(answer="yes"):
+            call = c.post(f"/api/patients/{p['id']}/calls", json={"scenario": "homilador"}).json()
+            for q in c.get(f"/api/call/{call['token']}").json()["questions"]:
+                c.post(f"/api/call/{call['token']}/answer", data={"qid": q["id"], "value": answer})
+            return c.post(f"/api/call/{call['token']}/finish").json(), call["id"]
+
+        def said(call_id):
+            return next(x for x in c.get("/api/calls").json() if x["id"] == call_id)
+
+        res, cid = ring()  # no key configured: the scenario's own phrase
+        assert res["closing"] == fixed_alarm and said(cid)["closing_by"] == "shablon"
+
+        seen = []
+        monkeypatch.setattr(closing, "enabled", lambda: True)
+        monkeypatch.setattr(closing, "ask", lambda text: seen.append(text) or good)
+        res, cid = ring()
+        assert res["closing"] == good and said(cid)["closing_by"] == "claude" and said(cid)["closing"] == good
+        sent = seen[-1]  # the model is told the answers and the outcome, never who the patient is
+        assert "Outcome: alarm" in sent and "bir yuz uch" in sent and "Qon ketishi" in sent
+        assert not any(secret in sent for secret in ("Yakun Sinov", "000-11-22", "Guliston", "1995"))
+
+        def broken(text):
+            raise RuntimeError("network down")
+
+        for bad in (lambda t: good.replace("bir yuz uch", "103"), lambda t: "Hammasi joyida, xavotir olmang, rahmat sizga!", lambda t: None, broken):
+            monkeypatch.setattr(closing, "ask", bad)
+            res, cid = ring()
+            assert res["closing"] == fixed_alarm and said(cid)["closing_by"] == "shablon"
+
+        # She was red before these calls, so the zone did not move; the staff still hear about every new alarm.
+        notices = [n for n in c.get("/api/dashboard").json()["notices"] if n["patient_id"] == p["id"] and "yangi xavf belgilari" in n["uz"]]
+        assert len(notices) >= 4 and all(n["level"] == "red" and n["role"] == "mutaxassis" for n in notices)
+        assert any(t["type"] == "mutaxassis" and t["status"] == "ochiq" for t in c.get(f"/api/patients/{p['id']}").json()["tasks"])
 
 
 def test_sign_in_forgives_paste_noise_but_not_a_wrong_password(monkeypatch):

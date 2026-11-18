@@ -3,7 +3,7 @@
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Response, UploadFile
 from fastapi.concurrency import run_in_threadpool
 
-from .. import core, extract, voicelab
+from .. import closing, core, extract, voicelab
 from ..db import Call
 from .deps import db_session
 
@@ -45,7 +45,7 @@ def info(token: str, db=Depends(db_session)):
 @router.get("/{token}/audio/{part}")
 def audio(token: str, part: str, db=Depends(db_session)):
     c = get_call(db, token)
-    text = phrase(core.SCENARIOS[c.scenario], part, c.lang or "uz")
+    text = c.closing if part == "closing" else phrase(core.SCENARIOS[c.scenario], part, c.lang or "uz")
     wav = voicelab.tts(text, c.lang or "uz") if text else None
     if not wav:
         raise HTTPException(404, "no audio")
@@ -89,11 +89,12 @@ async def answer(token: str, qid: str = Form(...), value: str = Form(""), audio:
 def finish(token: str, db=Depends(db_session)):
     c = get_call(db, token)
     if c.status == "tugadi":
-        return {"alert": False, "done": True}
+        return {"alert": False, "done": True, "closing": c.closing}
     res = core.finish_call(db, c)
+    c.closing, c.closing_by = closing.compose(c, res)  # Claude's wording when available, else the scenario's phrase
     core.audit(db, "bemor", "call_finished", c.patient, f"{c.scenario}: {', '.join(c.flags) or 'belgi yo`q'}")
     db.commit()
-    return res
+    return {**res, "closing": c.closing}
 
 
 @router.post("/{token}/noanswer")

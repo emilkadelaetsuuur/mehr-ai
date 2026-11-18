@@ -11,7 +11,7 @@ import qrcode.image.svg
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from sqlalchemy import event
 
-from .. import auth, config, core, ml, rules, seed, telegram, telephony, voicelab
+from .. import auth, closing, config, core, ml, rules, seed, telegram, telephony, voicelab
 from ..db import AuditLog, Notice, Patient, SessionLocal, User
 from ..schemas import LabImportIn, LoginIn, PasswordIn
 from .deps import brief, current_user, db_session, iso, require
@@ -98,6 +98,7 @@ def meta(db=Depends(db_session)):
         "auth": bool(config.DEMO_PASSWORD),
         "voicelab": voicelab.status(),
         "telephony": telephony.enabled(),
+        "claude": {"enabled": closing.enabled(), "model": config.CLAUDE_MODEL},
         "ml": ml.metrics(),
         "rules": rules.T,
         "complaints": {k: {"uz": v[0], "ru": v[1]} for k, v in rules.COMPLAINTS.items()},

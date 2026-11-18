@@ -100,6 +100,8 @@ def call_json(c):
         "status": c.status,
         "flags": c.flags,
         "answers": c.answers,
+        "closing": c.closing,
+        "closing_by": c.closing_by,
         "planned_at": iso(c.planned_at),
         "finished_at": iso(c.finished_at),
         "attempts": c.attempts,

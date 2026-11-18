@@ -29,3 +29,8 @@ TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN", "").strip()
 TWILIO_FROM = os.getenv("TWILIO_FROM", "").strip()
 TWILIO_API = os.getenv("TWILIO_API", "https://api.twilio.com").rstrip("/")
 SESSION_DAYS = 14
+
+# Claude words the closing of a call (optional). The key itself is read by the SDK from ANTHROPIC_API_KEY.
+CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "").strip() or "claude-opus-5-5"
+CLAUDE_TIMEOUT = float(os.getenv("CLAUDE_TIMEOUT", "9"))  # seconds a caller may wait before the fixed phrase is used
+CLAUDE_CLOSING = os.getenv("CLAUDE_CLOSING", "1").strip() != "0"

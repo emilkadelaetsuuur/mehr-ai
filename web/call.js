@@ -218,9 +218,10 @@
     const res = await fetch(`/api/call/${token}/finish`, { method: "POST" })
       .then((r) => r.json())
       .catch(() => ({}));
-    const text = res.alert || res.verified === false ? info.closing_alert : info.closing_ok;
+    const fixed = res.alert || res.verified === false ? "closing_alert" : "closing_ok";
+    const text = res.closing || info[fixed];
     box.innerHTML = `<div><div class="avatar">${res.alert ? "!" : "✓"}</div><h1>${t.done}</h1></div><div class="qtext">${esc(text)}</div><div class="ai-note">${t.ai}</div>`;
-    await play(res.alert || res.verified === false ? "closing_alert" : "closing_ok", text);
+    await play(res.closing ? "closing" : fixed, text);
     stream && stream.getTracks().forEach((x) => x.stop());
   }
 

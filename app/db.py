@@ -98,6 +98,8 @@ class Call(Base):
     attempts = Column(Integer, default=0)
     answers = Column(JSON, default=dict)  # qid -> {value, transcript, flag}
     flags = Column(JSON, default=list)
+    closing = Column(Text)  # the last words the patient heard
+    closing_by = Column(String(10))  # claude | shablon
     planned_at = Column(DateTime, default=now)
     finished_at = Column(DateTime)
     created_at = Column(DateTime, default=now)
@@ -148,7 +150,7 @@ class Meta(Base):
     value = Column(String(200))
 
 
-SCHEMA_VERSION = "4"
+SCHEMA_VERSION = "5"
 
 
 def init_db():

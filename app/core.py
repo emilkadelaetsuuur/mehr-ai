@@ -252,9 +252,26 @@ def finish_call(db, call):
     else:
         data["complaints"] = sorted(set(complaints))
         data["extra_flags"] = sorted(set(extra))
+        before = p.zone
         zone, _ = add_observation(db, p, "qongiroq", data, quotes, "\n".join(lines), "Nigoh AI")
         # What the caller hears depends on this call's answers alone, not on the zone the patient was in before.
-        alert = bool(complaints) or rules.evaluate(p.kind, data)[0] == "red"
+        own, found = rules.evaluate(p.kind, data)
+        alert = bool(complaints) or own == "red"
+        if alert and zone == before:
+            # The zone did not move (she was in it already), so the zone change sent nobody a notice.
+            # New warning signs must still reach the staff, and a red sign needs an open specialist task.
+            uz = "; ".join(f"{r['uz']} {r['value']}".strip() for r in found[:3])
+            ru = "; ".join(f"{r['ru']} {r['value']}".strip() for r in found[:3])
+            notify(
+                db,
+                p,
+                "mutaxassis" if own == "red" else "hamshira",
+                "red" if own == "red" else "yellow",
+                f"{p.full_name} ({p.mahalla}): AI qo'ng'iroqda yangi xavf belgilari — {uz}",
+                f"{p.full_name} ({p.mahalla}): в ИИ-звонке новые тревожные признаки — {ru}",
+            )
+            if own == "red":
+                open_task(db, p, "mutaxassis", "mutaxassis", uz, config.ACTIVE_CALL_HOURS)
     return {"zone": zone, "flags": call.flags, "alert": alert, "verified": verified}
 
 

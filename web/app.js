@@ -315,7 +315,10 @@
                 ([k, a]) =>
                   `<div class="small">${esc(k)}: <b>${a.value === "yes" ? t("yes") : a.value === "no" ? t("no") : a.value == null || a.value === "unclear" ? t("unclear") : esc(a.value)}</b>${a.transcript ? ` — <span class="quote">${esc(a.transcript)}</span>` : ""}</div>`,
               )
-              .join("")
+              .join("") +
+            (c.closing
+              ? `<div class="small mt">${t("closing_said")} <span class="badge z-gray">${t(c.closing_by === "claude" ? "closing_claude" : "closing_tpl")}</span>: <span class="quote">${esc(c.closing)}</span></div>`
+              : "")
           : `<div class="mt"><button class="btn sm ghost" data-call='${esc(JSON.stringify({ url: c.url, id: c.id }))}'>${t("begin")}</button></div>`
       }</div>`;
   function showCall(url, title, text, id) {
@@ -648,6 +651,7 @@
       <div class="grid" style="align-content:start"><div class="card"><h2>${t("ai_h")}</h2>
         <p><b>${t("ai_stt")}:</b> VoiceLab — <span class="badge ${vl.enabled ? "z-green" : "z-yellow"}">${vl.enabled ? t("ai_on") : t("ai_off")}</span></p>
         <p><b>${t("ai_llm")}:</b> ${esc(vl.model || "—")}</p>
+        <p><b>${t("ai_closing")}:</b> ${m.claude?.enabled ? `Claude (${esc(m.claude.model)}) — <span class="badge z-green">${t("ai_on")}</span>` : t("closing_tpl")}</p>
         <p><b>${t("ai_ml")}:</b> ${m.ml ? `${m.ml.records} ${t("records")}; ${t("acc")}: <b>${Math.round(m.ml.accuracy * 100)}%</b>; ${t("rec_red")}: <b>${Math.round(m.ml.recall_red * 100)}%</b>` : "—"}</p>
         <h3 class="mt">${t("eval_h")}</h3><p class="small">${t("eval_note")}</p>${
           m.eval

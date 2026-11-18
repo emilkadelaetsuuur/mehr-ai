@@ -12,3 +12,4 @@ services:
       - ./scripts:/srv/scripts:ro
       - ./tests:/srv/tests:ro
       - ./pytest.ini:/srv/pytest.ini:ro
+      - ./requirements.txt:/srv/requirements.txt:ro

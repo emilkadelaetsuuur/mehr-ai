@@ -9,4 +9,5 @@ reportlab==4.2.5
 scikit-learn==1.5.2
 numpy==1.26.4
 scipy==1.13.1
+anthropic==2.10.0
 pytest==8.3.4
